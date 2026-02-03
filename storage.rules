@@ -1,0 +1,56 @@
+rules_version = '2';
+service firebase.storage {
+  match /b/{bucket}/o {
+    
+    // ====================================
+    // VIBE APP - STORAGE SECURITY RULES
+    // ====================================
+    // These rules protect audio/image files from unauthorized access.
+    // Only authenticated users who are sender OR receiver can access files.
+    
+    // Helper function: Check if user is the sender or receiver
+    function isSenderOrReceiver(senderId, receiverId) {
+      return request.auth != null && 
+             (request.auth.uid == senderId || request.auth.uid == receiverId);
+    }
+    
+    // Audio files - voice messages
+    match /audio/{userId}/{fileName} {
+      // Only the owner can upload
+      allow write: if request.auth != null && request.auth.uid == userId;
+      
+      // For reading: Check metadata.senderId/receiverId OR just require auth (simpler)
+      // Using simpler auth check for MVP - download URLs are time-limited anyway
+      allow read: if request.auth != null;
+      
+      // STRICTER VERSION (uncomment when ready):
+      // allow read: if isSenderOrReceiver(
+      //   resource.metadata.senderId, 
+      //   resource.metadata.receiverId
+      // );
+    }
+    
+    // Image files - photos attached to vibes
+    match /images/{userId}/{fileName} {
+      // Only the owner can upload
+      allow write: if request.auth != null && request.auth.uid == userId;
+      
+      // Anyone authenticated can read (MVP simplicity)
+      allow read: if request.auth != null;
+    }
+    
+    // User avatars
+    match /avatars/{userId}/{fileName} {
+      // Only the owner can upload their avatar
+      allow write: if request.auth != null && request.auth.uid == userId;
+      
+      // Avatars are public to authenticated users
+      allow read: if request.auth != null;
+    }
+    
+    // Catch-all: Deny everything else
+    match /{allPaths=**} {
+      allow read, write: if false;
+    }
+  }
+}

@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="bio_lime">#D4F49C</color>
+    <color name="digital_lavender">#E5D1FA</color>
+    <color name="void_navy">#121212</color>
+    <color name="void_navy_alt">#0A0A1A</color>
+    <color name="deep_space">#0D0D1D</color>
+    <color name="starlight">#F0F2F5</color>
+    <color name="thermal_orange">#FF6B6B</color>
+
+    <!-- Semantic Mappings for Drawables -->
+    <color name="background">@color/void_navy</color>
+    <color name="primary">@color/bio_lime</color>
+    <color name="secondary">@color/digital_lavender</color>
+    <color name="glass_background">#CC121212</color>
+    <color name="glass_border">#33FFFFFF</color>
+</resources>

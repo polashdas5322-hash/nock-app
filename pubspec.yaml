@@ -1,0 +1,103 @@
+name: nock
+description: "Nock - Voice-First Social Widget for Close Friends"
+publish_to: 'none'
+version: 1.0.0+1
+
+environment:
+  sdk: ^3.9.2
+
+dependencies:
+  flutter:
+    sdk: flutter
+  
+  # Icons
+  cupertino_icons: ^1.0.8  # Required for CupertinoIcons (iOS-style icons)
+  phosphor_flutter: ^2.1.0
+  
+  # Firebase
+  firebase_core: ^3.13.0
+  firebase_auth: ^5.6.0
+  cloud_firestore: ^5.6.0
+  cloud_functions: ^5.3.1  # For calling revokeAppleToken Cloud Function
+  firebase_storage: ^12.4.1
+  firebase_messaging: ^15.2.4
+  
+  # Authentication - Multi-method (Google, Apple, Phone)
+  google_sign_in: ^6.2.2
+  sign_in_with_apple: ^6.1.4
+  crypto: ^3.0.6  # Required for Apple Sign-In nonce
+  
+  # State Management
+  flutter_riverpod: ^2.6.1
+  
+  
+  # State Management
+  go_router: ^15.1.2
+  
+  # UI
+  google_fonts: ^6.2.1
+  flutter_animate: ^4.5.2
+  shimmer: ^3.0.0
+  cached_network_image: ^3.4.1
+  
+  # Media
+  camera: ^0.11.1
+  photo_manager: ^3.6.4
+  photo_manager_image_provider: ^2.2.0
+  record: ^6.0.0
+  audioplayers: ^6.4.0
+  video_player: ^2.9.2
+  path_provider: ^2.1.5
+  path: ^1.9.1
+  
+  # Permissions
+  permission_handler: ^11.3.1
+  
+  # Widgets
+  home_widget: ^0.7.0
+  
+  # Sharing & Export - Viral Video Pipeline
+  share_plus: ^10.1.4
+  http: ^1.2.2
+  ffmpeg_kit_flutter_new_https: ^2.1.0        # LGPL variant (App Store compliant, with SSL/TLS)
+  vad: ^0.0.7                              # Speech detection for cost saving
+  appinio_social_share: ^0.3.2             # Instagram Stories support
+  
+  # Location - Distance Badge Feature (73 requests)
+  geolocator: ^13.0.2                      # For distance between friends
+  
+  # Gallery - Save Doodles (189 requests in competitor reviews)
+  gal: ^2.3.0                              # Save images to phone gallery
+  
+  # Utils
+  intl: ^0.20.2
+  uuid: ^4.5.1
+  shared_preferences: ^2.3.5
+  app_links: ^6.4.1
+  rxdart: ^0.28.0
+  purchases_flutter: ^9.10.1
+  flutter_staggered_grid_view: ^0.7.0
+  fast_contacts: ^5.0.1  # For "Find Friends" contact sync
+  url_launcher: ^6.3.1    # For direct SMS/phone/email launching
+  qr_flutter: ^4.1.0      # QR code generation for invite cards
+  device_info_plus: ^12.3.0
+  image: ^4.7.2
+  image_picker: ^1.2.1
+  audio_session: ^0.2.2
+  mesh_gradient: ^1.3.8
+  freezed_annotation: ^3.1.0
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^5.0.0
+  build_runner: ^2.10.5
+  freezed: ^3.2.4
+
+flutter:
+  uses-material-design: true
+  
+  assets:
+    - assets/images/
+    - assets/animations/
+

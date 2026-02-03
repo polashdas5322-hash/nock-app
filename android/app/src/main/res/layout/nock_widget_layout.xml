@@ -1,0 +1,80 @@
+<?xml version="1.0" encoding="utf-8"?>
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:padding="0dp"
+    android:background="@drawable/widget_background">
+
+    <!-- Profile image / Nock preview -->
+    <ImageView
+        android:id="@+id/widget_image"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:scaleType="centerCrop"
+        android:src="@drawable/widget_placeholder"
+        android:contentDescription="Latest nock" />
+
+    <!-- Overlay gradient - MUST use ImageView, not View (View not allowed in RemoteViews) -->
+    <ImageView
+        android:layout_width="match_parent"
+        android:layout_height="60dp"
+        android:layout_gravity="bottom"
+        android:background="@drawable/gradient_overlay" />
+
+    
+    <!-- Distance Badge - KILLED (SNR: visual noise, adds zero functional value) -->
+
+    <!-- Heart Button - KILLED (SNR: fat finger risk, can nudge from app) -->
+
+    <!-- Sender info container -->
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_gravity="bottom"
+        android:orientation="vertical"
+        android:padding="12dp">
+
+        <!-- Sender name -->
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal"
+            android:gravity="center_vertical">
+
+            <TextView
+                android:id="@+id/sender_name"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:text="Tap to play"
+                android:textColor="#FFFFFF"
+                android:textSize="14sp"
+                android:textStyle="bold"
+                android:maxLines="1"
+                android:ellipsize="end" />
+
+            <!-- Status indicator (new vibe dot) - Grouped with name (Proximity) -->
+            <ImageView
+                android:id="@+id/status_indicator"
+                android:layout_width="10dp"
+                android:layout_height="10dp"
+                android:layout_marginLeft="8dp"
+                android:src="@drawable/status_dot"
+                android:visibility="gone" />
+        </LinearLayout>
+
+        <!-- Nock info - KILLED (SNR: redundant with play button) -->
+
+    </LinearLayout>
+
+    <!-- Play button overlay -->
+    <ImageView
+        android:id="@+id/play_button"
+        android:layout_width="48dp"
+        android:layout_height="48dp"
+        android:layout_gravity="center"
+        android:src="@drawable/ic_play_circle"
+        android:visibility="gone"
+        android:contentDescription="Play nock" />
+
+</FrameLayout>

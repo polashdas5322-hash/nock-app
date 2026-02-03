@@ -1,0 +1,41 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <!-- App Groups - Required for Widget <-> App data sharing -->
+    <key>com.apple.security.application-groups</key>
+    <array>
+        <string>group.com.nock.nock</string>
+    </array>
+    
+    <!-- Universal Links - PLACEHOLDER FOR PRODUCTION -->
+    <!-- 
+    SETUP INSTRUCTIONS:
+    1. Replace YOUR_DOMAIN.com with your actual domain
+    2. Host apple-app-site-association file at:
+       https://YOUR_DOMAIN.com/.well-known/apple-app-site-association
+    3. The AASA file content should be:
+       {
+         "applinks": {
+           "apps": [],
+           "details": [{
+             "appID": "TEAM_ID.com.vibe.vibe",
+             "paths": ["/invite/*"]
+           }]
+         }
+       }
+    4. Update invite_service.dart to use https://YOUR_DOMAIN.com/invite/
+    5. Uncomment the associated-domains below
+    -->
+    <!--
+    <key>com.apple.developer.associated-domains</key>
+    <array>
+        <string>applinks:YOUR_DOMAIN.com</string>
+    </array>
+    -->
+    
+    <!-- Push Notifications -->
+    <key>aps-environment</key>
+    <string>development</string>
+</dict>
+</plist>

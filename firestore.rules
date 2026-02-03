@@ -1,0 +1,108 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    
+    // ====================================
+    // VIBE APP - FIRESTORE SECURITY RULES
+    // ====================================
+    
+    // Helper: Check if user is authenticated
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+    
+    // Helper: Check if user owns the document
+    function isOwner(userId) {
+      return request.auth.uid == userId;
+    }
+    
+    // -------- USERS COLLECTION --------
+    match /users/{userId} {
+      // Users can read their own profile
+      allow read: if isAuthenticated() && isOwner(userId);
+      
+      // Users can create/update their own profile
+      allow create, update: if isAuthenticated() && isOwner(userId);
+      
+      // Allow reading basic info (name, avatar, streak) for search/discovery
+      // In a production app, this should be limited to friends only
+      allow read: if isAuthenticated();
+      
+      // Never allow delete (soft-delete only)
+      allow delete: if false;
+    }
+    
+    // -------- VIBES COLLECTION --------
+    match /vibes/{vibeId} {
+      // Only sender or receiver can read
+      allow read: if isAuthenticated() && 
+                    (request.auth.uid == resource.data.senderId || 
+                     request.auth.uid == resource.data.receiverId);
+      
+      // Only authenticated users can create (senderId must match auth)
+      allow create: if isAuthenticated() && 
+                      request.auth.uid == request.resource.data.senderId;
+      
+      // Only sender can update (for reactions, etc.)
+      // Or receiver can update isPlayed status
+      allow update: if isAuthenticated() && 
+                      (request.auth.uid == resource.data.senderId || 
+                       request.auth.uid == resource.data.receiverId);
+      
+      // Only sender can delete (unsend)
+      allow delete: if isAuthenticated() && 
+                      request.auth.uid == resource.data.senderId;
+    }
+    
+    // -------- FRIENDSHIPS COLLECTION --------
+    match /friendships/{friendshipId} {
+      // Both users can read the friendship
+      allow read: if isAuthenticated() && 
+                    (request.auth.uid == resource.data.userId || 
+                     request.auth.uid == resource.data.friendId);
+      
+      // Only the user can create a friendship request
+      allow create: if isAuthenticated() && 
+                      request.auth.uid == request.resource.data.userId;
+      
+      // Both can update (accept, decline, health status)
+      allow update: if isAuthenticated() && 
+                      (request.auth.uid == resource.data.userId || 
+                       request.auth.uid == resource.data.friendId);
+      
+      // Either can delete (unfriend)
+      allow delete: if isAuthenticated() && 
+                      (request.auth.uid == resource.data.userId || 
+                       request.auth.uid == resource.data.friendId);
+    }
+    
+    // -------- NUDGES COLLECTION --------
+    match /nudges/{nudgeId} {
+      // Receiver can read
+      allow read: if isAuthenticated() && 
+                    request.auth.uid == resource.data.receiverId;
+      
+      // Sender can create
+      allow create: if isAuthenticated() && 
+                      request.auth.uid == request.resource.data.senderId;
+      
+      // No updates, nudges are fire-and-forget
+      allow update: if false;
+      
+      // Receiver can dismiss (delete)
+      allow delete: if isAuthenticated() && 
+                      request.auth.uid == resource.data.receiverId;
+    }
+    
+    // -------- SUBSCRIPTIONS COLLECTION --------
+    match /subscriptions/{userId} {
+      // Only owner can access their subscription
+      allow read, write: if isAuthenticated() && isOwner(userId);
+    }
+    
+    // Catch-all: Deny everything else
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

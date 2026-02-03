@@ -1,0 +1,174 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>CFBundleDevelopmentRegion</key>
+	<string>$(DEVELOPMENT_LANGUAGE)</string>
+	<key>CFBundleDisplayName</key>
+	<string>Nock</string>
+	<key>CFBundleExecutable</key>
+	<string>$(EXECUTABLE_NAME)</string>
+	<key>CFBundleIdentifier</key>
+	<string>$(PRODUCT_BUNDLE_IDENTIFIER)</string>
+	<key>CFBundleInfoDictionaryVersion</key>
+	<string>6.0</string>
+	<key>CFBundleName</key>
+	<string>Nock</string>
+	<key>CFBundlePackageType</key>
+	<string>APPL</string>
+	<key>CFBundleShortVersionString</key>
+	<string>$(FLUTTER_BUILD_NAME)</string>
+	<key>CFBundleSignature</key>
+	<string>????</string>
+	<key>CFBundleVersion</key>
+	<string>$(FLUTTER_BUILD_NUMBER)</string>
+	<key>LSRequiresIPhoneOS</key>
+	<true/>
+	<key>UILaunchStoryboardName</key>
+	<string>LaunchScreen</string>
+	<key>UIMainStoryboardFile</key>
+	<string>Main</string>
+	<key>UISupportedInterfaceOrientations</key>
+	<array>
+		<string>UIInterfaceOrientationPortrait</string>
+	</array>
+	<key>UISupportedInterfaceOrientations~ipad</key>
+	<array>
+		<string>UIInterfaceOrientationPortrait</string>
+		<string>UIInterfaceOrientationPortraitUpsideDown</string>
+		<string>UIInterfaceOrientationLandscapeLeft</string>
+		<string>UIInterfaceOrientationLandscapeRight</string>
+	</array>
+	<key>CADisableMinimumFrameDurationOnPhone</key>
+	<true/>
+	<key>UIApplicationSupportsIndirectInputEvents</key>
+	<true/>
+	
+	<!-- ═══════════════════════════════════════════════════════════════════ -->
+	<!-- 2025 APP STORE COMPLIANCE SECTION                                    -->
+	<!-- ═══════════════════════════════════════════════════════════════════ -->
+	
+	<!-- COMPLIANCE: Export Encryption (skips manual compliance questions) -->
+	<!-- Set to false if only using HTTPS (standard TLS) -->
+	<key>ITSAppUsesNonExemptEncryption</key>
+	<false/>
+	
+	<!-- SECURITY: App Transport Security - Enforce HTTPS only -->
+	<key>NSAppTransportSecurity</key>
+	<dict>
+		<key>NSAllowsArbitraryLoads</key>
+		<false/>
+	</dict>
+	
+	<!-- FLUTTER: Modern Deep Linking (go_router support) -->
+	<key>FlutterDeepLinkingEnabled</key>
+	<true/>
+	
+	<!-- PRIVACY: Disable Facebook SDK auto-tracking -->
+	<!-- CRITICAL: Without these, fbapi schemes may trigger ATT requirement -->
+	<key>FacebookAutoLogAppEventsEnabled</key>
+	<false/>
+	<key>FacebookAdvertiserIDCollectionEnabled</key>
+	<false/>
+	
+	<!-- UX: Prevent iOS 14+ Photo Library "Select Photos" nag -->
+	<key>PHPhotoLibraryPreventAutomaticLimitedAccessAlert</key>
+	<true/>
+	
+	<!-- UI: Let Flutter control status bar appearance -->
+	<key>UIViewControllerBasedStatusBarAppearance</key>
+	<false/>
+	
+	<!-- LOCALIZATION: Allow mixed localized content -->
+	<key>CFBundleAllowMixedLocalizations</key>
+	<true/>
+	
+	<!-- ═══════════════════════════════════════════════════════════════════ -->
+	<!-- PERMISSIONS SECTION (Apple Guideline 5.1 Compliant Strings)          -->
+	<!-- ═══════════════════════════════════════════════════════════════════ -->
+	
+	<!-- Camera Permission -->
+	<key>NSCameraUsageDescription</key>
+	<string>Nock uses the camera so you can take photos to send directly to your friends' home screens.</string>
+	
+	<!-- Microphone Permission -->
+	<key>NSMicrophoneUsageDescription</key>
+	<string>Nock uses the microphone to record voice messages you can send to your friends.</string>
+	
+	<!-- Photo Library Permission -->
+	<key>NSPhotoLibraryUsageDescription</key>
+	<string>Nock accesses your photo library so you can share existing photos with your friends.</string>
+	<key>NSPhotoLibraryAddUsageDescription</key>
+	<string>Nock saves photos and videos you receive from friends to your photo library.</string>
+	
+	<!-- Contacts Permission -->
+	<key>NSContactsUsageDescription</key>
+	<string>Nock checks your contacts to help you find friends who already use the app, so you can connect instantly.</string>
+	
+	<!-- ═══════════════════════════════════════════════════════════════════ -->
+	<!-- BACKGROUND MODES SECTION                                             -->
+	<!-- ═══════════════════════════════════════════════════════════════════ -->
+	
+	<key>UIBackgroundModes</key>
+	<array>
+		<string>remote-notification</string>
+		<string>fetch</string>
+		<string>processing</string>
+	</array>
+    
+    <key>BGTaskSchedulerPermittedIdentifiers</key>
+    <array>
+        <string>com.nock.nock.vibe_upload</string>
+    </array>
+	
+	<!-- ═══════════════════════════════════════════════════════════════════ -->
+	
+	<!-- ═══════════════════════════════════════════════════════════════════ -->
+	<!-- APP GROUPS & WIDGET SECTION                                          -->
+	<!-- ═══════════════════════════════════════════════════════════════════ -->
+	
+	<!-- App Groups for Widget data sharing -->
+	<key>com.apple.security.application-groups</key>
+	<array>
+		<string>group.com.nock.nock</string>
+	</array>
+	
+	<!-- ═══════════════════════════════════════════════════════════════════ -->
+	<!-- URL SCHEMES & DEEP LINKING                                           -->
+	<!-- ═══════════════════════════════════════════════════════════════════ -->
+	
+	<!-- LSApplicationQueriesSchemes: Apps we can open/share to -->
+	<!-- NOTE: Only include apps with actual share buttons in UI -->
+	<key>LSApplicationQueriesSchemes</key>
+	<array>
+		<!-- Instagram (Share to Stories/Feed) -->
+		<string>instagram</string>
+		<string>instagram-stories</string>
+		<!-- WhatsApp (Share invites) -->
+		<string>whatsapp</string>
+		<!-- Telegram (Share invites) -->
+		<string>tg</string>
+		<!-- TikTok (Share to status/post) -->
+		<string>tiktok-opensdk</string>
+		<string>tiktok-sharesdk</string>
+		<string>snssdk1233</string>
+		<string>snssdk1180</string>
+	</array>
+	
+	<!-- Custom URL Scheme for deep linking -->
+	<key>CFBundleURLTypes</key>
+	<array>
+		<dict>
+			<key>CFBundleTypeRole</key>
+			<string>Editor</string>
+			<key>CFBundleURLName</key>
+			<string>com.nock.app</string>
+			<key>CFBundleURLSchemes</key>
+			<array>
+				<string>nock</string>
+			</array>
+		</dict>
+	</array>
+</dict>
+</plist>
+

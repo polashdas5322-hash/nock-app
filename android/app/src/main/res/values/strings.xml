@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Vibe</string>
+    <string name="widget_description">See and hear your friends on your home screen</string>
+    <string name="widget_name">Vibe Widget</string>
+    <string name="bff_widget_description">Quick access to your best friend</string>
+    <string name="squad_widget_description">See your latest vibes at a glance</string>
+</resources>
+
