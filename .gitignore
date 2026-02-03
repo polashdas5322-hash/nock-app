@@ -57,3 +57,12 @@ key.properties
 **/.env
 functions/.env
 functions/service-account.json
+
+# 🗑️ Local Clutter (Screenshots, Logs, Dumps)
+Screenshot_*.png
+*.txt
+*.log
+test_widgets.js
+add_friend.js
+analysis_options.yaml
+devtools_options.yaml
