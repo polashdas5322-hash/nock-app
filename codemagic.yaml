@@ -7,21 +7,26 @@ workflows:
       flutter: stable
       xcode: 16.2
     scripts:
-      - name: Install CocoaPods
+      - name: Hard Reset and Build iOS Simulator
         script: |
+          # 1. Clean Flutter
+          flutter clean
+          flutter pub get
+          
+          # 2. Hard Reset CocoaPods
           cd ios
-          rm -rf Pods Podfile.lock .symlinks
+          rm -rf Pods build Podfile.lock .symlinks/plugins
           pod install --repo-update
+          
+          # 3. Return and Build
           cd ..
-      - name: Flutter build iOS Simulator
-        script: | 
           flutter build ios --simulator --debug --no-codesign
     artifacts:
       - build/ios/iphonesimulator/Runner.app
     publishing:
       email:
         recipients:
-          - polashdas5322@gmail.com # Replaced with a likely email based on corpus name, user should update if different
+          - polashdas5322@gmail.com
 
   android-app-preview:
     name: Android App Preview
@@ -30,14 +35,13 @@ workflows:
     environment:
       flutter: stable
     scripts:
-      - name: Install CocoaPods
+      - name: Hard Reset and Build APK
         script: |
-          cd ios
-          rm -rf Pods Podfile.lock .symlinks
-          pod install --repo-update
-          cd ..
-      - name: Flutter build APK
-        script: | 
+          # 1. Clean Flutter
+          flutter clean
+          flutter pub get
+          
+          # 2. Build APK
           flutter build apk --debug
     artifacts:
       - build/app/outputs/flutter-apk/app-debug.apk
