@@ -7,6 +7,12 @@ workflows:
       flutter: stable
       xcode: 16.2
     scripts:
+      - name: Install CocoaPods
+        script: |
+          cd ios
+          rm -rf Pods Podfile.lock .symlinks
+          pod install --repo-update
+          cd ..
       - name: Flutter build iOS Simulator
         script: | 
           flutter build ios --simulator --debug --no-codesign
@@ -24,6 +30,12 @@ workflows:
     environment:
       flutter: stable
     scripts:
+      - name: Install CocoaPods
+        script: |
+          cd ios
+          rm -rf Pods Podfile.lock .symlinks
+          pod install --repo-update
+          cd ..
       - name: Flutter build APK
         script: | 
           flutter build apk --debug
