@@ -2,11 +2,10 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 /// Provider for onboarding state
-final onboardingStateProvider = StateNotifierProvider<OnboardingStateNotifier, AsyncValue<bool>>((ref) {
-  return OnboardingStateNotifier();
-});
-
-
+final onboardingStateProvider =
+    StateNotifierProvider<OnboardingStateNotifier, AsyncValue<bool>>((ref) {
+      return OnboardingStateNotifier();
+    });
 
 class OnboardingStateNotifier extends StateNotifier<AsyncValue<bool>> {
   OnboardingStateNotifier() : super(const AsyncValue.loading()) {
@@ -35,7 +34,7 @@ class OnboardingStateNotifier extends StateNotifier<AsyncValue<bool>> {
       state = AsyncValue.error(e, st);
     }
   }
-  
+
   Future<void> resetOnboarding() async {
     state = const AsyncValue.loading();
     try {

@@ -4,15 +4,22 @@ class AppRoutes {
 
   // Auth Routes
   static const String splash = '/';
-  static const String onboarding = '/onboarding';
   static const String welcome = '/welcome';
 
-  // Permission Routes
-  static const String permissionMic = '/permission/microphone';
-  static const String permissionNotification = '/permission/notification';
+  // Onboarding Routes (The 4-Stage Flow)
+  // 1. Welcome (Hero)
+  // 2. Squad (Contacts)
   static const String permissionContacts = '/permission/contacts';
-  static const String permissionCamera = '/permission/camera';
+  // 2. Identity (Aura)
+  static const String identity = '/onboarding/identity';
+  // 3. Magic (Widget)
   static const String widgetSetup = '/widget-setup';
+
+  // Legacy routes removed:
+  // - onboarding (Tutorial)
+  // - permissionMic (Contextual)
+  // - permissionCamera (Contextual)
+  // - permissionNotification (Contextual)
 
   // Main Routes
   static const String home = '/home';

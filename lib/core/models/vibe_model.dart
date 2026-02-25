@@ -10,9 +10,10 @@ class VibeModel {
   final String receiverId;
   final String audioUrl;
   final String? imageUrl;
-  final String? videoUrl;  // For video vibes
-  final bool isVideo;  // True if this is a video vibe
-  final bool isAudioOnly;  // True if audio-only (uses blurred profile as background)
+  final String? videoUrl; // For video vibes
+  final bool isVideo; // True if this is a video vibe
+  final bool
+  isAudioOnly; // True if audio-only (uses blurred profile as background)
   final int audioDuration; // in seconds
   final List<double> waveformData;
   final DateTime createdAt;
@@ -25,7 +26,11 @@ class VibeModel {
   final String? transcription; // AI generated transcription for "Read-First"
   final String? widgetHook; // 🪝 AI-generated 3-word hook for widget engagement
   final List<TextReply> textReplies; // "Visual Whispers" text messages
-  
+
+  // Batch Support: Links vibes sent to multiple friends in one action
+  final String?
+  batchId; // Shared ID for batch-sent vibes (null for single sends or legacy vibes)
+
   // GDPR Compliance: Deletion metadata
   final bool isDeleted; // True if sender deleted this vibe
   final DateTime? deletedAt; // When the vibe was deleted
@@ -54,6 +59,7 @@ class VibeModel {
     this.transcription,
     this.widgetHook,
     this.textReplies = const [],
+    this.batchId,
     this.isDeleted = false,
     this.deletedAt,
     this.deletedBy,
@@ -88,16 +94,17 @@ class VibeModel {
       replyVibeId: data['replyVibeId'],
       reactions: data['reactions'] != null
           ? (data['reactions'] as List)
-              .map((r) => VibeReaction.fromMap(r))
-              .toList()
+                .map((r) => VibeReaction.fromMap(r))
+                .toList()
           : [],
       transcription: data['transcription'],
       widgetHook: data['widgetHook'],
       textReplies: data['textReplies'] != null
           ? (data['textReplies'] as List)
-              .map((t) => TextReply.fromMap(t))
-              .toList()
+                .map((t) => TextReply.fromMap(t))
+                .toList()
           : [],
+      batchId: data['batchId'],
       isDeleted: data['isDeleted'] ?? false,
       deletedAt: data['deletedAt'] != null
           ? (data['deletedAt'] as Timestamp).toDate()
@@ -131,6 +138,7 @@ class VibeModel {
       'transcription': transcription,
       'widgetHook': widgetHook,
       'textReplies': textReplies.map((t) => t.toMap()).toList(),
+      'batchId': batchId,
       'isDeleted': isDeleted,
       'deletedAt': deletedAt != null ? Timestamp.fromDate(deletedAt!) : null,
       'deletedBy': deletedBy,
@@ -159,6 +167,7 @@ class VibeModel {
     String? transcription,
     String? widgetHook,
     List<TextReply>? textReplies,
+    String? batchId,
     bool? isDeleted,
     DateTime? deletedAt,
     String? deletedBy,
@@ -185,6 +194,7 @@ class VibeModel {
       transcription: transcription ?? this.transcription,
       widgetHook: widgetHook ?? this.widgetHook,
       textReplies: textReplies ?? this.textReplies,
+      batchId: batchId ?? this.batchId,
       isDeleted: isDeleted ?? this.isDeleted,
       deletedAt: deletedAt ?? this.deletedAt,
       deletedBy: deletedBy ?? this.deletedBy,
@@ -194,11 +204,11 @@ class VibeModel {
   /// Check if this is a "Time Travel" upload (from gallery)
   /// Only true if the photo is older than 24 hours - prevents tagging
   /// recently taken photos as "nostalgia" content
-  /// 
+  ///
   /// FIX: Uses createdAt (upload time) instead of DateTime.now() for deterministic logic
   bool get isTimeTravel {
     if (!isFromGallery || originalPhotoDate == null) return false;
-    
+
     // Photo must be at least 24 hours old AT UPLOAD TIME to be "Time Travel"
     // This is immutable - doesn't change as time passes
     final photoAge = createdAt.difference(originalPhotoDate!);
@@ -209,8 +219,18 @@ class VibeModel {
   String? get retroTag {
     if (!isTimeTravel || originalPhotoDate == null) return null;
     final months = [
-      'JAN', 'FEB', 'MAR', 'APR', 'MAY', 'JUN',
-      'JUL', 'AUG', 'SEP', 'OCT', 'NOV', 'DEC'
+      'JAN',
+      'FEB',
+      'MAR',
+      'APR',
+      'MAY',
+      'JUN',
+      'JUL',
+      'AUG',
+      'SEP',
+      'OCT',
+      'NOV',
+      'DEC',
     ];
     return 'RETRO ${months[originalPhotoDate!.month - 1]} \'${originalPhotoDate!.year.toString().substring(2)}';
   }
@@ -220,20 +240,30 @@ class VibeModel {
   String get temporalTag {
     final now = DateTime.now();
     final age = now.difference(createdAt);
-    
+
     if (age.inMinutes < 15) return 'LIVE';
     if (age.inHours < 24) return 'TODAY';
-    
+
     if (isTimeTravel && originalPhotoDate != null) {
       final months = [
-        'JAN', 'FEB', 'MAR', 'APR', 'MAY', 'JUN',
-        'JUL', 'AUG', 'SEP', 'OCT', 'NOV', 'DEC'
+        'JAN',
+        'FEB',
+        'MAR',
+        'APR',
+        'MAY',
+        'JUN',
+        'JUL',
+        'AUG',
+        'SEP',
+        'OCT',
+        'NOV',
+        'DEC',
       ];
       final monthStr = months[originalPhotoDate!.month - 1];
       final yearStr = originalPhotoDate!.year.toString().substring(2);
       return 'RETRO $monthStr \'$yearStr';
     }
-    
+
     return 'PAST';
   }
 }
@@ -253,7 +283,7 @@ class VibeReaction {
   factory VibeReaction.fromMap(Map<String, dynamic> map) {
     return VibeReaction(
       userId: map['userId'] ?? '',
-      emoji: map['emoji'] ?? '❤️',
+      emoji: map['emoji'] ?? '👍',
       createdAt: map['createdAt'] != null
           ? (map['createdAt'] as Timestamp).toDate()
           : DateTime.now(),

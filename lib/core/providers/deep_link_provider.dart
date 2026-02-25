@@ -2,7 +2,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 /// Deep Link Context Provider
-/// 
+///
 /// Preserves deep link data (like invite codes) across the auth flow.
 /// When a user clicks an invite link but isn't logged in, the inviterId
 /// is stored here and retrieved after authentication completes.
@@ -10,16 +10,18 @@ import 'package:shared_preferences/shared_preferences.dart';
 const String _pendingInviteKey = 'pending_invite_id';
 
 /// Provider to track pending invite from deep link
-final pendingInviteProvider = StateNotifierProvider<PendingInviteNotifier, String?>((ref) {
-  return PendingInviteNotifier();
-});
+final pendingInviteProvider =
+    StateNotifierProvider<PendingInviteNotifier, String?>((ref) {
+      return PendingInviteNotifier();
+    });
 
 const String _pendingRedirectKey = 'pending_redirect_location';
 
 /// Provider to track ANY pending redirect (invites, player, record, etc.)
-final pendingRedirectProvider = StateNotifierProvider<PendingRedirectNotifier, String?>((ref) {
-  return PendingRedirectNotifier();
-});
+final pendingRedirectProvider =
+    StateNotifierProvider<PendingRedirectNotifier, String?>((ref) {
+      return PendingRedirectNotifier();
+    });
 
 /// Optimized for Router: Returns null if invite is dismissed for this session
 final activeInviteProvider = Provider<String?>((ref) {

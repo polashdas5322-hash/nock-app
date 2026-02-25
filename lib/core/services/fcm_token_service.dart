@@ -6,21 +6,21 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:go_router/go_router.dart';
 
 /// FCM Token Service
-/// 
+///
 /// Manages FCM (Firebase Cloud Messaging) tokens for push notifications.
 /// Tokens are saved to Firestore so Cloud Functions can send targeted pushes.
 class FCMTokenService {
   final FirebaseMessaging _messaging = FirebaseMessaging.instance;
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
   final FirebaseAuth _auth = FirebaseAuth.instance;
-  
+
   GoRouter? _router;
 
   /// Initialize FCM and save token
   /// Pass router for navigation when user taps notification
   Future<void> initialize({GoRouter? router}) async {
     _router = router;
-    
+
     // Listen for token refresh
     _messaging.onTokenRefresh.listen(_saveTokenToFirestore);
 
@@ -32,32 +32,34 @@ class FCMTokenService {
 
     // Handle foreground messages
     FirebaseMessaging.onMessage.listen(_handleForegroundMessage);
-    
+
     // FIX #1: Handle notification clicks when app is in background/terminated
     // This enables Deep Link from Notification → Player Screen
     FirebaseMessaging.onMessageOpenedApp.listen(_handleNotificationClick);
-    
+
     // FIX #1b: Handle cold start from notification (app was terminated)
     final initialMessage = await _messaging.getInitialMessage();
     if (initialMessage != null) {
-      debugPrint('FCMTokenService: App opened from terminated state via notification');
+      debugPrint(
+        'FCMTokenService: App opened from terminated state via notification',
+      );
       _handleNotificationClick(initialMessage);
     }
   }
-  
+
   /// Handle notification click - Navigate to appropriate screen
   void _handleNotificationClick(RemoteMessage message) {
     debugPrint('FCMTokenService: Notification clicked');
     debugPrint('  Data: ${message.data}');
-    
+
     if (_router == null) {
       debugPrint('FCMTokenService: Router not available, cannot navigate');
       return;
     }
-    
+
     final messageType = message.data['type'];
     final vibeId = message.data['vibeId'];
-    
+
     switch (messageType) {
       case 'NEW_VIBE':
       case 'WIDGET_UPDATE':
@@ -67,8 +69,7 @@ class FCMTokenService {
           _router!.go('/player/$vibeId?fromNotification=true');
         }
         break;
-        
-        
+
       default:
         debugPrint('FCMTokenService: Unknown type, going home');
         _router!.go('/home');
@@ -89,24 +90,28 @@ class FCMTokenService {
     try {
       // 1. Fetch current document to check if sync is actually needed
       final doc = await _firestore.collection('users').doc(user.uid).get();
-      
+
       if (doc.exists) {
         final data = doc.data();
         final currentToken = data?['fcmToken'] as String?;
         final lastUpdated = data?['fcmTokenUpdatedAt'] as Timestamp?;
-        
+
         // 2. Only update if token changed OR sync is older than 30 days
         bool needsSync = currentToken != token;
-        
+
         if (!needsSync && lastUpdated != null) {
-          final thirtyDaysAgo = DateTime.now().subtract(const Duration(days: 30));
+          final thirtyDaysAgo = DateTime.now().subtract(
+            const Duration(days: 30),
+          );
           if (lastUpdated.toDate().isBefore(thirtyDaysAgo)) {
             needsSync = true;
           }
         }
 
         if (!needsSync) {
-          debugPrint('FCMTokenService: Token already synced and fresh, skipping write');
+          debugPrint(
+            'FCMTokenService: Token already synced and fresh, skipping write',
+          );
           return;
         }
 
@@ -121,8 +126,10 @@ class FCMTokenService {
           'fcmTokenUpdatedAt': FieldValue.serverTimestamp(),
         }, SetOptions(merge: true));
       }
-      
-      debugPrint('FCMTokenService: Token successfully synced for user ${user.uid}');
+
+      debugPrint(
+        'FCMTokenService: Token successfully synced for user ${user.uid}',
+      );
     } catch (e) {
       debugPrint('FCMTokenService: Error syncing token: $e');
     }
@@ -139,28 +146,42 @@ class FCMTokenService {
         return await _messaging.getToken();
       } catch (e) {
         final errorStr = e.toString().toUpperCase();
-        
+
         if (errorStr.contains('TOO_MANY_REGISTRATIONS')) {
-          debugPrint('══════════════════════════════════════════════════════════════');
-          debugPrint('CRITICAL: FCM Registration Limit Reached (TOO_MANY_REGISTRATIONS)');
+          debugPrint(
+            '══════════════════════════════════════════════════════════════',
+          );
+          debugPrint(
+            'CRITICAL: FCM Registration Limit Reached (TOO_MANY_REGISTRATIONS)',
+          );
           debugPrint('This usually happens on Emulators with stale data.');
-          debugPrint('FIX: Wipe Data on your Android Emulator (AVD Manager -> Wipe Data)');
-          debugPrint('══════════════════════════════════════════════════════════════');
+          debugPrint(
+            'FIX: Wipe Data on your Android Emulator (AVD Manager -> Wipe Data)',
+          );
+          debugPrint(
+            '══════════════════════════════════════════════════════════════',
+          );
           return null; // Don't retry this specific error
-        } 
-        
-        debugPrint('FCMTokenService: getToken error (Attempt ${i + 1}/$maxRetries): $e');
-        
+        }
+
+        debugPrint(
+          'FCMTokenService: getToken error (Attempt ${i + 1}/$maxRetries): $e',
+        );
+
         if (i < maxRetries - 1) {
           // Exponential backoff: 1s, 2s, 4s...
-          final delay = initialDelay * (1 << i); 
-          debugPrint('FCMTokenService: Retrying in ${delay.inSeconds} seconds...');
+          final delay = initialDelay * (1 << i);
+          debugPrint(
+            'FCMTokenService: Retrying in ${delay.inSeconds} seconds...',
+          );
           await Future.delayed(delay);
         }
       }
     }
-    
-    debugPrint('FCMTokenService: Failed to get token after $maxRetries attempts.');
+
+    debugPrint(
+      'FCMTokenService: Failed to get token after $maxRetries attempts.',
+    );
     return null;
   }
 
@@ -168,17 +189,16 @@ class FCMTokenService {
   void _handleForegroundMessage(RemoteMessage message) {
     debugPrint('FCMTokenService: Foreground message received');
     debugPrint('  Data: ${message.data}');
-    
+
     final messageType = message.data['type'];
-    
+
     switch (messageType) {
       case 'WIDGET_UPDATE':
         // Update widget even when app is open
         debugPrint('FCMTokenService: Widget update received in foreground');
         // Widget is already synced via Firestore listener when app is open
         break;
-        
-        
+
       default:
         debugPrint('FCMTokenService: Unknown message type: $messageType');
     }
@@ -196,7 +216,7 @@ class FCMTokenService {
         debugPrint('FCMTokenService: Error deleting token: $e');
       }
     }
-    
+
     // Also delete from FCM
     await _messaging.deleteToken();
   }
@@ -218,9 +238,9 @@ class FCMTokenService {
       announcement: false,
       carPlay: false,
     );
-    
+
     return settings.authorizationStatus == AuthorizationStatus.authorized ||
-           settings.authorizationStatus == AuthorizationStatus.provisional;
+        settings.authorizationStatus == AuthorizationStatus.provisional;
   }
 }
 

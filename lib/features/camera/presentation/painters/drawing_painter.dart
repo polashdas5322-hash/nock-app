@@ -28,17 +28,23 @@ class DrawingPainter extends CustomPainter {
         ..strokeWidth = stroke.strokeWidth * strokeScale
         ..strokeCap = StrokeCap.round
         ..style = PaintingStyle.stroke;
-      
+
       if (stroke.points.length > 1) {
         final path = Path();
-        path.moveTo(stroke.points.first.dx * size.width, stroke.points.first.dy * size.height);
+        path.moveTo(
+          stroke.points.first.dx * size.width,
+          stroke.points.first.dy * size.height,
+        );
         for (int i = 1; i < stroke.points.length; i++) {
-          path.lineTo(stroke.points[i].dx * size.width, stroke.points[i].dy * size.height);
+          path.lineTo(
+            stroke.points[i].dx * size.width,
+            stroke.points[i].dy * size.height,
+          );
         }
         canvas.drawPath(path, paint);
       }
     }
-    
+
     // Draw current stroke
     if (currentStroke.length > 1) {
       final paint = Paint()
@@ -46,11 +52,17 @@ class DrawingPainter extends CustomPainter {
         ..strokeWidth = currentStrokeWidth * strokeScale
         ..strokeCap = StrokeCap.round
         ..style = PaintingStyle.stroke;
-      
+
       final path = Path();
-      path.moveTo(currentStroke.first.dx * size.width, currentStroke.first.dy * size.height);
+      path.moveTo(
+        currentStroke.first.dx * size.width,
+        currentStroke.first.dy * size.height,
+      );
       for (int i = 1; i < currentStroke.length; i++) {
-        path.lineTo(currentStroke[i].dx * size.width, currentStroke[i].dy * size.height);
+        path.lineTo(
+          currentStroke[i].dx * size.width,
+          currentStroke[i].dy * size.height,
+        );
       }
       canvas.drawPath(path, paint);
     }

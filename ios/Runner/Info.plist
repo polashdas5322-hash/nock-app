@@ -114,6 +114,7 @@
 		<string>remote-notification</string>
 		<string>fetch</string>
 		<string>processing</string>
+		<string>audio</string>
 	</array>
     
     <key>BGTaskSchedulerPermittedIdentifiers</key>

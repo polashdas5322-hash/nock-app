@@ -9,14 +9,14 @@ import 'package:permission_handler/permission_handler.dart';
 import '../models/user_model.dart';
 
 /// 🔐 PRIVACY HARDENING: Global Application Pepper
-/// 
+///
 /// This pepper is used to salt phone number hashes before querying Firestore.
 /// This prevents rainbow table attacks on the low-entropy phone number space.
-/// 
+///
 /// IMPORTANT: This must match the pepper used in:
 /// 1. User registration (when storing phoneNumberHash in Firestore)
 /// 2. Any Cloud Functions that process phone numbers
-/// 
+///
 /// In production, this should be loaded from secure storage (--dart-define)
 const String _kPhoneNumberPepper = 'nock_contact_discovery_2026_v1';
 
@@ -30,25 +30,25 @@ class SyncedContact {
   final String displayName;
   final String phoneNumber;
   final UserModel? matchedUser; // null if not on Nock
-  
+
   SyncedContact({
     required this.displayName,
     required this.phoneNumber,
     this.matchedUser,
   });
-  
+
   bool get isOnNock => matchedUser != null;
 }
 
 /// Service to sync device contacts and find friends on Nock.
-/// 
+///
 /// Uses [fast_contacts] for optimized contact fetching (~200ms for 1000+ contacts)
 /// and matches phone numbers against Firestore users collection.
 class ContactsSyncService {
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
 
   /// Fetch ALL device contacts and mark which ones are on Nock.
-  /// 
+  ///
   /// Returns a list of [SyncedContact] with:
   /// - matchedUser set if they have a Nock account
   /// - matchedUser null if they're not on Nock (invite them!)
@@ -73,11 +73,13 @@ class ContactsSyncService {
       for (final phone in contact.phones) {
         final normalized = _normalizePhoneNumber(phone.number);
         if (normalized.isNotEmpty && normalized.length >= 10) {
-          contactsWithPhones.add(_ContactWithPhone(
-            displayName: contact.displayName,
-            originalPhone: phone.number,
-            normalizedPhone: normalized,
-          ));
+          contactsWithPhones.add(
+            _ContactWithPhone(
+              displayName: contact.displayName,
+              originalPhone: phone.number,
+              normalizedPhone: normalized,
+            ),
+          );
         }
       }
     }
@@ -91,7 +93,7 @@ class ContactsSyncService {
         uniqueContacts.add(c);
       }
     }
-    
+
     debugPrint('ContactsSyncService: ${uniqueContacts.length} unique contacts');
 
     if (uniqueContacts.isEmpty) {
@@ -103,19 +105,19 @@ class ContactsSyncService {
     // Firestore users collection must store 'phoneNumberHash' field.
     final matchedUsers = <String, UserModel>{}; // hash -> user
     const batchSize = 30;
-    
+
     // Create a map: hash -> normalizedPhone (for reverse lookup)
     final hashToPhone = <String, String>{};
     for (final contact in uniqueContacts) {
       final hash = _hashPhoneNumber(contact.normalizedPhone);
       hashToPhone[hash] = contact.normalizedPhone;
     }
-    
+
     final allHashes = hashToPhone.keys.toList();
 
     for (var i = 0; i < allHashes.length; i += batchSize) {
       final batch = allHashes.skip(i).take(batchSize).toList();
-      
+
       try {
         // 🔐 Query by phoneNumberHash, NOT raw phoneNumber
         final querySnapshot = await _firestore
@@ -141,11 +143,13 @@ class ContactsSyncService {
     // 5. Build final list with match status
     final result = <SyncedContact>[];
     for (final contact in uniqueContacts) {
-      result.add(SyncedContact(
-        displayName: contact.displayName,
-        phoneNumber: contact.originalPhone,
-        matchedUser: matchedUsers[contact.normalizedPhone],
-      ));
+      result.add(
+        SyncedContact(
+          displayName: contact.displayName,
+          phoneNumber: contact.originalPhone,
+          matchedUser: matchedUsers[contact.normalizedPhone],
+        ),
+      );
     }
 
     // Sort: matches first, then alphabetically
@@ -169,7 +173,7 @@ class ContactsSyncService {
     if (normalized.length == 10) {
       normalized = '+1$normalized';
     }
-    
+
     if (normalized.length == 11 && normalized.startsWith('1')) {
       normalized = '+$normalized';
     }
@@ -180,9 +184,9 @@ class ContactsSyncService {
 
     return normalized;
   }
-  
+
   /// 🔐 Hash phone number with SHA256 + global pepper
-  /// 
+  ///
   /// This creates a one-way hash that can be used for matching without
   /// exposing raw phone numbers in network traffic or Firestore logs.
   String _hashPhoneNumber(String normalizedPhone) {
@@ -198,7 +202,7 @@ class _ContactWithPhone {
   final String displayName;
   final String originalPhone;
   final String normalizedPhone;
-  
+
   _ContactWithPhone({
     required this.displayName,
     required this.originalPhone,

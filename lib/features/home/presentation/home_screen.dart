@@ -9,13 +9,19 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:home_widget/home_widget.dart';
 import 'package:nock/core/theme/app_colors.dart';
+import 'package:phosphor_flutter/phosphor_flutter.dart';
 import 'package:nock/core/theme/app_typography.dart';
+import 'package:nock/core/theme/app_icons.dart';
+import 'package:nock/shared/widgets/app_icon.dart';
+
 import 'package:nock/core/constants/app_routes.dart';
 import 'package:nock/core/services/auth_service.dart';
 import 'package:nock/core/services/fcm_token_service.dart';
 import 'package:nock/core/services/widget_update_service.dart';
 import 'package:nock/core/models/user_model.dart';
 import 'package:nock/shared/widgets/glass_container.dart';
+import 'package:nock/shared/widgets/vibe_bottom_sheet.dart';
+import 'package:nock/core/utils/app_modal.dart';
 import 'package:nock/features/camera/presentation/camera_screen_new.dart';
 import 'package:nock/features/home/presentation/bento_dashboard_screen.dart';
 import 'package:collection/collection.dart';
@@ -217,6 +223,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
         
         // Transition to SUCCESS
         if (task.status == VibeUploadStatus.success && prevTask?.status != VibeUploadStatus.success) {
+          if (task.isSilent) continue; // 🔇 Local UI handle feedback
            debugPrint('🏁 [HomeScreen] Vibe upload completed: ${task.id}');
            // 2026 UX: Debounced Toast Logic
            // We suppress individual toasts here because SmartSendSheet handles the immediate "Sent!" feedback.
@@ -234,10 +241,10 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
             SnackBar(
               content: Row(
                 children: [
-                   const Icon(Icons.check_circle, color: AppColors.primaryAction, size: 20),
+                   AppIcon(AppIcons.checkCircle, color: AppColors.primaryAction, size: 20),
                    const SizedBox(width: 12),
                    // Generic message covers both single and multi-send scenarios nicely
-                   Text('Vibe sent!', style: const TextStyle(fontWeight: FontWeight.bold)),
+                   Text('Vibe sent!', style: AppTypography.bodyMedium.copyWith(fontWeight: FontWeight.bold)),
                 ],
               ),
               backgroundColor: const Color(0xFF1E1E1E),
@@ -250,13 +257,14 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
         
         // Transition to ERROR
         if (task.status == VibeUploadStatus.error && prevTask?.status != VibeUploadStatus.error) {
+          if (task.isSilent) continue; // 🔇 Local UI handles feedback
           debugPrint('❌ [HomeScreen] Vibe upload error feedback: ${task.error}');
           HapticFeedback.vibrate();
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
               content: Row(
                 children: [
-                   const Icon(Icons.error_outline, color: AppColors.error, size: 20),
+                   AppIcon(AppIcons.error, color: AppColors.error, size: 20),
                    const SizedBox(width: 12),
                    Expanded(child: Text('Failed to send: ${task.error ?? "Unknown error"}')),
                 ],
@@ -379,8 +387,8 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
               ),
             ),
             const SizedBox(height: 4),
-            Icon(
-              Icons.keyboard_arrow_up,
+            AppIcon(
+              AppIcons.caretUp,
               color: Colors.white.withAlpha(120),
               size: 24,
             ),
@@ -390,95 +398,69 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
     );
   }
 
-  /// Open Vault as a bottom sheet (thumb accessible)
   void _openVaultSheet() {
     HapticFeedback.mediumImpact();
-    showModalBottomSheet(
+    AppModal.show(
       context: context,
-      isScrollControlled: true,
-      backgroundColor: Colors.transparent,
-      builder: (context) => DraggableScrollableSheet(
+      child: DraggableScrollableSheet(
         initialChildSize: 0.9,
         minChildSize: 0.5,
         maxChildSize: 0.95,
-        builder: (context, controller) => Container(
-          decoration: const BoxDecoration(
-            color: AppColors.background,
-            borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
-          ),
-          child: Column(
-            children: [
-              // Handle
-              Container(
-                margin: const EdgeInsets.only(top: 12),
-                width: 40,
-                height: 4,
-                decoration: BoxDecoration(
-                  color: Colors.white.withAlpha(76),
-                  borderRadius: BorderRadius.circular(2),
-                ),
+        expand: false,
+        builder: (context, controller) => Column(
+          children: [
+            // Header
+            Padding(
+              padding: const EdgeInsets.all(16),
+              child: Row(
+                children: [
+                  Text('Memories', style: AppTypography.headlineMedium),
+                  const Spacer(),
+                  IconButton(
+                    onPressed: () => Navigator.pop(context),
+                    icon: AppIcon(AppIcons.close, color: AppColors.textSecondary),
+                  ),
+                ],
               ),
-              // Header
-              Padding(
-                padding: const EdgeInsets.all(16),
-                child: Row(
+            ),
+            // Vault content placeholder
+            Expanded(
+              child: Center(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
                   children: [
-                    Text('Memories', style: AppTypography.headlineMedium),
-                    const Spacer(),
-                    IconButton(
-                      onPressed: () => Navigator.pop(context),
-                      icon: const Icon(Icons.close, color: AppColors.textSecondary),
+                    AppIcon(
+                      AppIcons.gallery,
+                      size: 64,
+                      color: AppColors.textTertiary,
+                    ),
+                    const SizedBox(height: 16),
+                    Text(
+                      'Your memories will appear here',
+                      style: AppTypography.bodyMedium.copyWith(
+                        color: AppColors.textSecondary,
+                      ),
                     ),
                   ],
                 ),
               ),
-              // Vault content placeholder
-              Expanded(
-                child: Center(
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Icon(
-                        Icons.photo_library_outlined,
-                        size: 64,
-                        color: AppColors.textTertiary,
-                      ),
-                      const SizedBox(height: 16),
-                      Text(
-                        'Your memories will appear here',
-                        style: AppTypography.bodyMedium.copyWith(
-                          color: AppColors.textSecondary,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-            ],
-          ),
+            ),
+          ],
         ),
       ),
     );
   }
 
-  /// Open Settings as a modal (keeps user in context)
   void _openSettingsSheet() {
     HapticFeedback.mediumImpact();
-    showModalBottomSheet(
+    AppModal.show(
       context: context,
-      isScrollControlled: true,
-      backgroundColor: Colors.transparent,
-      builder: (context) => DraggableScrollableSheet(
+      child: DraggableScrollableSheet(
         initialChildSize: 0.85,
         minChildSize: 0.5,
         maxChildSize: 0.95,
-        builder: (context, controller) => Container(
-          decoration: const BoxDecoration(
-            color: AppColors.background,
-            borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
-          ),
-          child: _SettingsContent(scrollController: controller),
-        ),
+        expand: false,
+        builder: (context, controller) => _SettingsContent(scrollController: controller),
       ),
     );
   }
@@ -507,18 +489,7 @@ class _SettingsContentState extends ConsumerState<_SettingsContent> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // Handle
-          Center(
-            child: Container(
-              margin: const EdgeInsets.only(bottom: 16),
-              width: 40,
-              height: 4,
-              decoration: BoxDecoration(
-                color: Colors.white.withAlpha(76),
-                borderRadius: BorderRadius.circular(2),
-              ),
-            ),
-          ),
+          // Handle - REMOVED (VibeBottomSheet provides this)
           
           // Header
           Row(
@@ -527,7 +498,7 @@ class _SettingsContentState extends ConsumerState<_SettingsContent> {
               const Spacer(),
               IconButton(
                 onPressed: () => Navigator.pop(context),
-                icon: const Icon(Icons.close, color: AppColors.textSecondary),
+                icon: AppIcon(AppIcons.close, color: AppColors.textSecondary),
               ),
             ],
           ),
@@ -548,27 +519,27 @@ class _SettingsContentState extends ConsumerState<_SettingsContent> {
 
           // Settings options
           _buildSettingsItem(
-            icon: Icons.notifications_outlined,
+            icon: AppIcons.notification,
             title: 'Notifications',
             onTap: () {},
           ),
           _buildSettingsItem(
-            icon: Icons.lock_outline,
+            icon: AppIcons.unlock,
             title: 'Privacy',
             onTap: () {},
           ),
           _buildSettingsItem(
-            icon: Icons.widgets_outlined,
+            icon: AppIcons.widget,
             title: 'Widget Setup',
             onTap: () => context.push(AppRoutes.widgetSetup),
           ),
           _buildSettingsItem(
-            icon: Icons.help_outline,
+            icon: AppIcons.help,
             title: 'Help & Support',
             onTap: () {},
           ),
           _buildSettingsItem(
-            icon: Icons.info_outline,
+            icon: AppIcons.info,
             title: 'About',
             onTap: () {},
           ),
@@ -606,11 +577,11 @@ class _SettingsContentState extends ConsumerState<_SettingsContent> {
               },
               child: Row(
                 children: [
-                  const Icon(Icons.videocam, color: Colors.red),
+                  PhosphorIcon(PhosphorIcons.videoCamera(PhosphorIconsStyle.regular), color: Colors.red),
                   const SizedBox(width: 12),
                   Text('Test VIDEO Vibe', style: AppTypography.bodyMedium),
                   const Spacer(),
-                  const Icon(Icons.play_arrow, color: Colors.white54),
+                  PhosphorIcon(PhosphorIcons.play(PhosphorIconsStyle.fill), color: Colors.white54),
                 ],
               ),
             ),
@@ -641,11 +612,11 @@ class _SettingsContentState extends ConsumerState<_SettingsContent> {
               },
               child: Row(
                 children: [
-                  const Icon(Icons.mic, color: Colors.green),
+                  PhosphorIcon(PhosphorIcons.microphone(PhosphorIconsStyle.regular), color: Colors.green),
                   const SizedBox(width: 12),
                   Text('Test AUDIO-ONLY Vibe', style: AppTypography.bodyMedium),
                   const Spacer(),
-                  const Icon(Icons.play_arrow, color: Colors.white54),
+                  PhosphorIcon(PhosphorIcons.play(PhosphorIconsStyle.fill), color: Colors.white54),
                 ],
               ),
             ),
@@ -676,11 +647,11 @@ class _SettingsContentState extends ConsumerState<_SettingsContent> {
               },
               child: Row(
                 children: [
-                  const Icon(Icons.photo_camera, color: Colors.purple),
+                  PhosphorIcon(PhosphorIcons.camera(), color: Colors.purple),
                   const SizedBox(width: 12),
                   Text('Test PHOTO+AUDIO Vibe', style: AppTypography.bodyMedium),
                   const Spacer(),
-                  const Icon(Icons.play_arrow, color: Colors.white54),
+                  PhosphorIcon(PhosphorIcons.play(), color: Colors.white54),
                 ],
               ),
             ),
@@ -756,7 +727,7 @@ class _SettingsContentState extends ConsumerState<_SettingsContent> {
                 ? ClipOval(
                     child: Image.network(user.avatarUrl!, fit: BoxFit.cover),
                   )
-                : const Icon(Icons.person, size: 28, color: Colors.white),
+                : PhosphorIcon(PhosphorIcons.user(PhosphorIconsStyle.regular), size: 28, color: Colors.white),
           ),
           const SizedBox(width: 16),
           Expanded(
@@ -777,7 +748,7 @@ class _SettingsContentState extends ConsumerState<_SettingsContent> {
                     height: 20, 
                     child: CircularProgressIndicator(strokeWidth: 2, color: AppColors.textSecondary)
                   )
-                : const Icon(Icons.edit_outlined, color: AppColors.textSecondary),
+                : Icon(AppIcons.edit, color: AppColors.textSecondary),
           ),
         ],
       ),
@@ -846,7 +817,7 @@ class _SettingsContentState extends ConsumerState<_SettingsContent> {
           const SizedBox(width: 16),
           Text(title, style: AppTypography.bodyLarge),
           const Spacer(),
-          const Icon(Icons.chevron_right, color: AppColors.textTertiary),
+          Icon(AppIcons.chevronRight, color: AppColors.textTertiary),
         ],
       ),
     );
@@ -911,19 +882,19 @@ class _SettingsContentState extends ConsumerState<_SettingsContent> {
       context: context,
       builder: (context) => AlertDialog(
         backgroundColor: AppColors.surface,
-        title: const Text('Delete Account?', style: TextStyle(color: Colors.white)),
-        content: const Text(
+        title: Text('Delete Account?', style: AppTypography.headlineSmall.copyWith(color: Colors.white)),
+        content: Text(
           'This will permanently delete your profile, vibes, and subscription data. This action cannot be undone.',
-          style: TextStyle(color: Colors.white70),
+          style: AppTypography.bodyMedium.copyWith(color: Colors.white70),
         ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context, false),
-            child: const Text('Cancel', style: TextStyle(color: Colors.white54)),
+            child: Text('Cancel', style: AppTypography.buttonText.copyWith(color: Colors.white54)),
           ),
           TextButton(
             onPressed: () => Navigator.pop(context, true),
-            child: const Text('Delete Permanently', style: TextStyle(color: AppColors.error)),
+            child: Text('Delete Permanently', style: AppTypography.buttonText.copyWith(color: AppColors.error)),
           ),
         ],
       ),
@@ -956,20 +927,20 @@ class _SettingsContentState extends ConsumerState<_SettingsContent> {
       barrierDismissible: false,
       builder: (context) => AlertDialog(
         backgroundColor: AppColors.surface,
-        title: const Text('Security Check', style: TextStyle(color: Colors.white)),
-        content: const Text(
+        title: Text('Security Check', style: AppTypography.headlineSmall.copyWith(color: Colors.white)),
+        content: Text(
           'For your security, please sign in again to confirm you want to delete this account.',
-          style: TextStyle(color: Colors.white70),
+          style: AppTypography.bodyMedium.copyWith(color: Colors.white70),
         ),
         actions: [
           TextButton(
              onPressed: () => Navigator.pop(context, false),
-             child: const Text('Cancel', style: TextStyle(color: Colors.white54)),
+             child: Text('Cancel', style: AppTypography.buttonText.copyWith(color: Colors.white54)),
           ),
           ElevatedButton(
             style: ElevatedButton.styleFrom(backgroundColor: AppColors.primaryAction),
             onPressed: () => Navigator.pop(context, true),
-            child: const Text('Verify Identity', style: TextStyle(color: Colors.black)),
+            child: Text('Verify Identity', style: AppTypography.buttonText.copyWith(color: Colors.black)),
           ),
         ],
       ),
@@ -1008,15 +979,15 @@ class _SettingsContentState extends ConsumerState<_SettingsContent> {
                     context: context,
                     builder: (context) => AlertDialog(
                         backgroundColor: AppColors.surface,
-                        title: const Text('Identity Mismatch', style: TextStyle(color: Colors.white)),
-                        content: const Text(
+                        title: Text('Identity Mismatch', style: AppTypography.headlineSmall.copyWith(color: Colors.white)),
+                        content: Text(
                             'The account you just signed into does not match the one you are trying to delete. Please sign in with the correct account.',
-                            style: TextStyle(color: Colors.white70),
+                            style: AppTypography.bodyMedium.copyWith(color: Colors.white70),
                         ),
                         actions: [
                             TextButton(
                                 onPressed: () => Navigator.pop(context),
-                                child: const Text('OK', style: TextStyle(color: AppColors.primaryAction)),
+                                child: Text('OK', style: AppTypography.buttonText.copyWith(color: AppColors.primaryAction)),
                             ),
                         ],
                     ),

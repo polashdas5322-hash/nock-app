@@ -150,9 +150,22 @@ struct SquadWidgetView: View {
     
     // MARK: - Vibe Grid
     private var vibeGridView: some View {
-        HStack(spacing: 12) {
-            ForEach(entry.recentVibes) { vibe in
-                vibeCard(vibe)
+        let maxCount = family == .systemLarge ? 6 : 3
+        let displayVibes = Array(entry.recentVibes.prefix(maxCount))
+        
+        return Group {
+            if family == .systemLarge {
+                LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 12) {
+                    ForEach(displayVibes) { vibe in
+                       vibeCard(vibe)
+                    }
+                }
+            } else {
+                HStack(spacing: 12) {
+                    ForEach(displayVibes) { vibe in
+                        vibeCard(vibe)
+                    }
+                }
             }
         }
         .padding(.horizontal, 0)
@@ -164,7 +177,8 @@ struct SquadWidgetView: View {
         Link(destination: URL(string: "nock://player/\(vibe.vibeId)")!) {
                 // Image or Avatar
                 ZStack {
-                    let cardSize: CGFloat = 70
+                    // Adaptive size based on widget family
+                    let cardSize: CGFloat = family == .systemLarge ? 60 : 70
                     
                     if let imageURL = vibe.imageURL,
                        let uiImage = downsample(at: imageURL, to: CGSize(width: cardSize, height: cardSize)) {
@@ -284,7 +298,7 @@ struct SquadWidget: Widget {
         }
         .configurationDisplayName("Squad")
         .description("See your latest vibes at a glance")
-        .supportedFamilies([.systemMedium])
+        .supportedFamilies([.systemMedium, .systemLarge])
     }
 }
 

@@ -1,3 +1,4 @@
+import 'package:nock/core/theme/app_icons.dart';
 import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:nock/core/theme/app_colors.dart';
@@ -47,9 +48,11 @@ class _AuraVisualizationState extends State<AuraVisualization>
       CurvedAnimation(parent: _pulseController, curve: Curves.easeInOut),
     );
 
-    // UX FIX: Don't start perpetual animations here.
-    // Animation now controlled by didUpdateWidget based on isRecording/isPlaying state.
-    // This eliminates constant ambient motion that causes cognitive load.
+    // Check initial state
+    if (widget.isRecording || widget.isPlaying) {
+      _pulseController.repeat(reverse: true);
+      _rotationController.repeat();
+    }
   }
 
   @override
@@ -57,15 +60,16 @@ class _AuraVisualizationState extends State<AuraVisualization>
     super.didUpdateWidget(oldWidget);
     final isActive = widget.isRecording || widget.isPlaying;
     final wasActive = oldWidget.isRecording || oldWidget.isPlaying;
-    
-    if (isActive && !wasActive) {
-      // Start animations when becoming active
-      _pulseController.repeat(reverse: true);
-      _rotationController.repeat();
-    } else if (!isActive && wasActive) {
-      // Stop animations when becoming inactive
-      _pulseController.stop();
-      _rotationController.stop();
+
+    if (isActive != wasActive) {
+      if (isActive) {
+        _pulseController.repeat(reverse: true);
+        _rotationController.repeat();
+      } else {
+        _pulseController.stop();
+        _pulseController.reset();
+        _rotationController.stop();
+      }
     }
   }
 
@@ -122,7 +126,7 @@ class _AuraVisualizationState extends State<AuraVisualization>
       builder: (context, child) {
         final baseScale = isActive
             ? 0.8 + (_currentAmplitude * 0.4)
-            : _pulseAnimation.value * 0.9;
+            : 0.9; // Static rest state (no pulsing)
 
         return SizedBox(
           width: widget.size,
@@ -142,7 +146,7 @@ class _AuraVisualizationState extends State<AuraVisualization>
                       colors: [
                         _primaryColor.withOpacity(0.3),
                         _primaryColor.withOpacity(0.1),
-                        Colors.transparent,
+                        AppColors.transparent,
                       ],
                     ),
                   ),
@@ -183,7 +187,7 @@ class _AuraVisualizationState extends State<AuraVisualization>
                     shape: BoxShape.circle,
                     gradient: RadialGradient(
                       colors: [
-                        Colors.white.withOpacity(0.9),
+                        AppColors.textPrimary.withOpacity(0.9),
                         _primaryColor.withOpacity(0.8),
                         _secondaryColor.withOpacity(0.6),
                       ],
@@ -205,8 +209,10 @@ class _AuraVisualizationState extends State<AuraVisualization>
                   child: CustomPaint(
                     size: Size(widget.size, widget.size),
                     painter: WaveformPainter(
-                      waveformData: List.from(widget.waveformData), // Pass a snapshot
-                      color: Colors.white.withOpacity(0.5),
+                      waveformData: List.from(
+                        widget.waveformData,
+                      ), // Pass a snapshot
+                      color: AppColors.textPrimary.withOpacity(0.5),
                     ),
                   ),
                 ),
@@ -214,10 +220,10 @@ class _AuraVisualizationState extends State<AuraVisualization>
               // Center icon
               Icon(
                 widget.isRecording
-                    ? Icons.mic
+                    ? AppIcons.mic
                     : widget.isPlaying
-                        ? Icons.volume_up
-                        : Icons.touch_app,
+                    ? AppIcons.volumeUp
+                    : AppIcons.touch,
                 color: AppColors.background,
                 size: widget.size * 0.2,
               ),
@@ -234,10 +240,7 @@ class WaveformPainter extends CustomPainter {
   final List<double> waveformData;
   final Color color;
 
-  WaveformPainter({
-    required this.waveformData,
-    required this.color,
-  });
+  WaveformPainter({required this.waveformData, required this.color});
 
   @override
   void paint(Canvas canvas, Size size) {
@@ -279,17 +282,18 @@ class WaveformPainter extends CustomPainter {
   bool shouldRepaint(WaveformPainter oldDelegate) {
     // Robust comparison: length check first (fast), then reference check
     if (oldDelegate.waveformData.length != waveformData.length) return true;
-    return oldDelegate.waveformData != waveformData || oldDelegate.color != color;
+    return oldDelegate.waveformData != waveformData ||
+        oldDelegate.color != color;
   }
 }
 
 /// Mood types for Aura visualization
 enum AuraMood {
-  happy,    // Yellow/Gold
-  excited,  // Orange/Pink
-  calm,     // Blue
-  sad,      // Purple
-  neutral,  // Cyan
+  happy, // Yellow/Gold
+  excited, // Orange/Pink
+  calm, // Blue
+  sad, // Purple
+  neutral, // Cyan
 }
 
 /// Simple waveform bar visualization
@@ -317,9 +321,7 @@ class WaveformBars extends StatelessWidget {
         mainAxisAlignment: MainAxisAlignment.spaceEvenly,
         crossAxisAlignment: CrossAxisAlignment.center,
         children: List.generate(barCount, (index) {
-          final value = displayData.length > index
-              ? displayData[index]
-              : 0.1;
+          final value = displayData.length > index ? displayData[index] : 0.1;
           return AnimatedContainer(
             duration: const Duration(milliseconds: 100),
             width: 3,

@@ -1,6 +1,10 @@
+import 'package:nock/core/theme/app_icons.dart';
+import 'package:nock/shared/widgets/app_icon.dart';
+
 import 'package:flutter/material.dart';
 import 'package:qr_flutter/qr_flutter.dart';
 import 'package:nock/core/theme/app_colors.dart';
+import 'package:nock/core/theme/app_typography.dart';
 
 /// QR Code Invite Card Widget
 /// Displays a clean QR code card that users can share to invite friends.
@@ -33,12 +37,12 @@ class QRInviteCard extends StatelessWidget {
         color: AppColors.surfaceCard,
         borderRadius: BorderRadius.circular(24),
         border: Border.all(
-          color: Colors.white.withOpacity(0.05),
+          color: AppColors.textPrimary.withOpacity(0.05),
           width: 1,
         ),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.3), // Dark shadow, not colored
+            color: AppColors.shadow,
             blurRadius: 16, // Tighter blur
             spreadRadius: 0, // No spread
             offset: const Offset(0, 4), // Natural drop direction
@@ -59,50 +63,43 @@ class QRInviteCard extends StatelessWidget {
               ),
               child: Text(
                 '@$username',
-                style: const TextStyle(
-                  color: Colors.white,
-                  fontSize: 16,
+                style: AppTypography.bodyLarge.copyWith(
                   fontWeight: FontWeight.bold,
                   letterSpacing: 0.5,
+                  color: AppColors.textPrimary,
                 ),
               ),
             ),
-            
+
             const SizedBox(height: 20),
-            
+
             // Tagline
-            const Text(
+            Text(
               'INVITE TO NOCK',
-              style: TextStyle(
-                color: Colors.white,
-                fontSize: 14,
-                fontWeight: FontWeight.w600,
-                letterSpacing: 2,
-              ),
+              style: AppTypography.labelLarge.copyWith(letterSpacing: 2),
             ),
-            
+
             const SizedBox(height: 4),
-            
+
             // App URL
             Text(
               'nock.app',
-              style: TextStyle(
-                color: AppColors.textSecondary,
+              style: AppTypography.labelMedium.copyWith(
                 fontSize: 13,
-                fontWeight: FontWeight.w500,
+                color: AppColors.textSecondary,
               ),
             ),
-            
+
             const SizedBox(height: 20),
-            
+
             // QR Code
             Container(
               padding: const EdgeInsets.all(12),
               decoration: BoxDecoration(
-                color: Colors.white.withOpacity(0.03),
+                color: AppColors.textPrimary.withOpacity(0.03),
                 borderRadius: BorderRadius.circular(16),
                 border: Border.all(
-                  color: Colors.white.withOpacity(0.05),
+                  color: AppColors.textPrimary.withOpacity(0.05),
                   width: 1,
                 ),
               ),
@@ -112,34 +109,29 @@ class QRInviteCard extends StatelessWidget {
                 size: 180,
                 eyeStyle: const QrEyeStyle(
                   eyeShape: QrEyeShape.square,
-                  color: Colors.white,
+                  color: AppColors.textPrimary,
                 ),
                 dataModuleStyle: const QrDataModuleStyle(
                   dataModuleShape: QrDataModuleShape.square,
-                  color: Colors.white,
+                  color: AppColors.textPrimary,
                 ),
                 embeddedImage: null,
                 embeddedImageStyle: null,
               ),
             ),
-            
+
             const SizedBox(height: 16),
-            
+
             // Scan instruction
             Row(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                const Icon(
-                  Icons.qr_code_scanner,
-                  size: 16,
-                  color: AppColors.textTertiary,
-                ),
+                AppIcon(AppIcons.scan, size: 16, color: AppColors.textTertiary),
                 const SizedBox(width: 6),
-                const Text(
+                Text(
                   'Scan to add me on Nock',
-                  style: TextStyle(
+                  style: AppTypography.labelMedium.copyWith(
                     color: AppColors.textTertiary,
-                    fontSize: 12,
                     fontWeight: FontWeight.w500,
                   ),
                 ),

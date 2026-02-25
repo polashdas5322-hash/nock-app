@@ -1,3 +1,6 @@
+import 'package:nock/core/theme/app_icons.dart';
+import 'package:nock/shared/widgets/app_icon.dart';
+
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:nock/core/theme/app_colors.dart';
@@ -5,7 +8,7 @@ import 'package:nock/core/theme/app_typography.dart';
 import 'package:nock/core/constants/app_routes.dart';
 
 /// 404 / Error Screen
-/// 
+///
 /// Replaces the dead-end error page with a branded recovery screen.
 /// Provides a clear "Go Home" button to prevent user strand.
 class NotFoundScreen extends StatelessWidget {
@@ -19,9 +22,7 @@ class NotFoundScreen extends StatelessWidget {
       backgroundColor: AppColors.background,
       body: Container(
         padding: const EdgeInsets.symmetric(horizontal: 40),
-        decoration: const BoxDecoration(
-          gradient: AppColors.darkGradient,
-        ),
+        decoration: const BoxDecoration(gradient: AppColors.darkGradient),
         child: Center(
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
@@ -38,14 +39,14 @@ class NotFoundScreen extends StatelessWidget {
                     width: 2,
                   ),
                 ),
-                child: const Icon(
-                  Icons.explore_off_outlined,
+                child: AppIcon(
+                  AppIcons.exploreOff,
                   size: 40,
                   color: AppColors.primaryAction,
                 ),
               ),
               const SizedBox(height: 32),
-              
+
               // Error Message
               Text(
                 '404',
@@ -55,10 +56,7 @@ class NotFoundScreen extends StatelessWidget {
                 ),
               ),
               const SizedBox(height: 8),
-              Text(
-                'Page Not Found',
-                style: AppTypography.headlineLarge,
-              ),
+              Text('Page Not Found', style: AppTypography.headlineLarge),
               const SizedBox(height: 16),
               Text(
                 'The link you followed might be broken or the page has been moved.',
@@ -78,7 +76,7 @@ class NotFoundScreen extends StatelessWidget {
                 overflow: TextOverflow.ellipsis,
               ),
               const SizedBox(height: 48),
-              
+
               // Recovery Action
               SizedBox(
                 width: double.infinity,
@@ -93,10 +91,7 @@ class NotFoundScreen extends StatelessWidget {
                     ),
                     elevation: 0,
                   ),
-                  child: Text(
-                    'Go Back Home',
-                    style: AppTypography.buttonText,
-                  ),
+                  child: Text('Go Back Home', style: AppTypography.buttonText),
                 ),
               ),
             ],

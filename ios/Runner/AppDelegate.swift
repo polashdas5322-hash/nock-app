@@ -1,6 +1,7 @@
 import Flutter
 import UIKit
 import AVFoundation
+import BackgroundTasks
 
 @main
 @objc class AppDelegate: FlutterAppDelegate {
@@ -67,10 +68,12 @@ import AVFoundation
                                               binaryMessenger: controller.binaryMessenger)
     
     // Register the task identifier for iOS 19+ survival
-    if #available(iOS 19.0, *) {
+    // Register the task identifier
+    // iOS 19+ or iOS 13+ generally uses BGProcessingTask
+    if #available(iOS 13.0, *) {
         BGTaskScheduler.shared.register(forTaskWithIdentifier: "com.nock.nock.vibe_upload", using: nil) { task in
-            guard let processingTask = task as? BGContinuedProcessingTask else { return }
-            self.handleContinuedProcessingTask(processingTask)
+            guard let processingTask = task as? BGProcessingTask else { return }
+            self.handleProcessingTask(processingTask)
         }
     }
 
@@ -80,14 +83,16 @@ import AVFoundation
         let taskId = "com.nock.nock.vibe_upload"
         
         // 🛡️ 2026 GOLD STANDARD: BGContinuedProcessingTask (iOS 19+)
-        if #available(iOS 19.0, *) {
-            let request = BGContinuedProcessingTaskRequest(identifier: taskId)
-            request.title = (call.arguments as? [String: Any])?["title"] as? String ?? "Sending Vibe"
+        // 🛡️ 2026 GOLD STANDARD: BGProcessingTask (iOS 13+)
+        if #available(iOS 13.0, *) {
+            let request = BGProcessingTaskRequest(identifier: taskId)
+            request.requiresNetworkConnectivity = true
+            request.requiresExternalPower = false
             
             do {
                 try BGTaskScheduler.shared.submit(request)
             } catch {
-                print("AppDelegate: Failed to submit BGContinuedProcessingTask: \(error)")
+                print("AppDelegate: Failed to submit BGProcessingTask: \(error)")
             }
         }
         
@@ -97,15 +102,21 @@ import AVFoundation
         result(taskId)
         
       case "updateTaskProgress":
-        if #available(iOS 19.0, *),
+        if #available(iOS 13.0, *),
            let args = call.arguments as? [String: Any],
            let fraction = args["fraction"] as? Double {
-            self?.activeProcessingTask?.progress.completedUnitCount = Int64(fraction * 100)
+            // ProcessingTask doesn't have a direct progress/completedUnitCount in old APIs easily exposed this way without custom logic
+            // But we can keep it if needed or remove.
+            // Actually BGProcessingTask doesn't expose 'progress' property directly in standard Swift SDK?
+            // Wait, standard BGTask DOES NOT have progress.
+            // This might be another hallucination.
+            // I will comment it out to be safe.
+            // self?.activeProcessingTask?.progress.completedUnitCount = Int64(fraction * 100)
         }
         result(true)
         
       case "stopBackgroundTask":
-        if #available(iOS 19.0, *) {
+        if #available(iOS 13.0, *) {
             self?.activeProcessingTask?.setTaskCompleted(success: true)
             self?.activeProcessingTask = nil
         }
@@ -115,18 +126,34 @@ import AVFoundation
         result(FlutterMethodNotImplemented)
       }
     })
+    // ==================== WIDGET CHANNEL ====================
+    let widgetChannel = FlutterMethodChannel(name: "com.nock.nock/widget",
+                                             binaryMessenger: controller.binaryMessenger)
+
+    widgetChannel.setMethodCallHandler({ [weak self] (call: FlutterMethodCall, result: @escaping FlutterResult) -> Void in
+      if call.method == "getAppGroupPath" {
+          // CRITICAL: Return the shared container path for atomic file operations
+          if let containerURL = FileManager.default.containerURL(forSecurityApplicationGroupIdentifier: "group.com.nock.nock") {
+              result(containerURL.path)
+          } else {
+              result(FlutterError(code: "NO_APP_GROUP", message: "Failed to access App Group", details: nil))
+          }
+      } else {
+        result(FlutterMethodNotImplemented)
+      }
+    })
 
     GeneratedPluginRegistrant.register(with: self)
     return super.application(application, didFinishLaunchingWithOptions: launchOptions)
   }
 
-  // Reference to track the active task for progress updates
-  private var activeProcessingTask: BGContinuedProcessingTask?
+  // Reference to track the active task
+  @available(iOS 13.0, *)
+  private var activeProcessingTask: BGProcessingTask?
 
-  @available(iOS 19.0, *)
-  private func handleContinuedProcessingTask(_ task: BGContinuedProcessingTask) {
+  @available(iOS 13.0, *)
+  private func handleProcessingTask(_ task: BGProcessingTask) {
       self.activeProcessingTask = task
-      task.progress.totalUnitCount = 100
       
       task.expirationHandler = {
           // 🛡️ CRITICAL: Save state or cleanup before termination

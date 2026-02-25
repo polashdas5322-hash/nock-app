@@ -5,57 +5,64 @@ import 'package:go_router/go_router.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:nock/core/theme/app_colors.dart';
 import 'package:nock/core/theme/app_typography.dart';
+import 'package:nock/core/theme/app_icons.dart';
+import 'package:nock/shared/widgets/app_icon.dart';
+
 import 'package:nock/core/constants/app_constants.dart';
 import 'package:nock/core/constants/app_routes.dart';
 import 'package:nock/core/services/auth_service.dart';
 import 'package:nock/core/services/vibe_service.dart';
 import 'package:nock/core/models/user_model.dart';
-import 'package:nock/core/models/squad_model.dart';
 import 'package:nock/shared/widgets/glass_container.dart';
-import 'package:nock/shared/widgets/aura_visualization.dart';
+import 'package:nock/core/utils/app_modal.dart';
 import 'package:rxdart/rxdart.dart'; // <--- ADD THIS LINE
 
 /// Friends provider (basic - just user models)
 /// FIX: Batch query to handle Firestore whereIn limit of 10
 final friendsProvider = StreamProvider<List<UserModel>>((ref) {
   final currentUser = ref.watch(currentUserProvider);
-  
+
   return currentUser.when(
     data: (user) {
       if (user == null || user.friendIds.isEmpty) {
         return Stream.value([]);
       }
-      
+
       // FIX: Batch queries for friends beyond the whereIn limit of 10
       final friendIds = user.friendIds.toList();
-      
+
       // Split into chunks of 10
       final chunks = <List<String>>[];
       for (var i = 0; i < friendIds.length; i += 10) {
-        chunks.add(friendIds.sublist(
-          i, 
-          i + 10 > friendIds.length ? friendIds.length : i + 10,
-        ));
+        chunks.add(
+          friendIds.sublist(
+            i,
+            i + 10 > friendIds.length ? friendIds.length : i + 10,
+          ),
+        );
       }
-      
+
       // Create a stream for each chunk
       final streams = chunks.map((chunk) {
         return FirebaseFirestore.instance
             .collection(AppConstants.usersCollection)
             .where(FieldPath.documentId, whereIn: chunk)
             .snapshots()
-            .map((snapshot) =>
-                snapshot.docs.map((doc) => UserModel.fromFirestore(doc)).toList());
+            .map(
+              (snapshot) => snapshot.docs
+                  .map((doc) => UserModel.fromFirestore(doc))
+                  .toList(),
+            );
       }).toList();
-      
+
       // Merge all streams
       if (streams.isEmpty) return Stream.value([]);
       if (streams.length == 1) return streams.first;
-      
+
       // INDUSTRY BEST PRACTICE: Use CombineLatestStream for clean state management
       // This prevents duplicate accumulation and ensures UI shows exact DB state
       if (streams.length == 1) return streams.first;
-      
+
       // CombineLatest emits whenever ANY chunk updates, with fresh complete list
       return CombineLatestStream.list(streams).map((listOfLists) {
         // Flatten List<List<UserModel>> into single List<UserModel>
@@ -70,57 +77,39 @@ final friendsProvider = StreamProvider<List<UserModel>>((ref) {
 /// Squad member with health info combined
 class SquadMember {
   final UserModel user;
-  final VibeLevel vibeLevel;
   final DateTime? lastVibeAt;
-  
-  SquadMember({
-    required this.user,
-    required this.vibeLevel,
-    this.lastVibeAt,
-  });
+
+  SquadMember({required this.user, this.lastVibeAt});
 }
 
 /// Compute vibe level based on history
 /// POSITIVE FRAMING: Connections are "Bloom", "Steady", or "Chill"
-VibeLevel _computeVibeLevel(DateTime? lastActive) {
-  // Null means no vibes yet - ready for first chill bloom!
-  if (lastActive == null) return VibeLevel.chill;
-  
-  final now = DateTime.now();
-  final daysSinceActive = now.difference(lastActive).inDays;
-  
-  if (daysSinceActive <= 1) {
-    return VibeLevel.bloom;   // 🌸 Active connection
-  } else if (daysSinceActive <= 3) {
-    return VibeLevel.steady;  // ⚡ Building history
-  } else {
-    return VibeLevel.chill;   // 🌫️ Low-key / resting
-  }
-}
 
 /// Enhanced friends provider with health status (Tamagotchi effect)
 /// FIX: Batch query to handle Firestore whereIn limit of 30
 final squadWithHealthProvider = StreamProvider<List<SquadMember>>((ref) {
   final currentUser = ref.watch(currentUserProvider);
-  
+
   return currentUser.when(
     data: (user) {
       if (user == null || user.friendIds.isEmpty) {
         return Stream.value([]);
       }
-      
+
       // FIX: Batch queries for friends beyond the whereIn limit of 30
       final friendIds = user.friendIds.toList();
-      
+
       // Split into chunks of 10 (conservative, Firestore limit is 30)
       final chunks = <List<String>>[];
       for (var i = 0; i < friendIds.length; i += 10) {
-        chunks.add(friendIds.sublist(
-          i, 
-          i + 10 > friendIds.length ? friendIds.length : i + 10,
-        ));
+        chunks.add(
+          friendIds.sublist(
+            i,
+            i + 10 > friendIds.length ? friendIds.length : i + 10,
+          ),
+        );
       }
-      
+
       // Create a stream for each chunk
       final streams = chunks.map((chunk) {
         return FirebaseFirestore.instance
@@ -130,20 +119,18 @@ final squadWithHealthProvider = StreamProvider<List<SquadMember>>((ref) {
             .map((snapshot) {
               return snapshot.docs.map((doc) {
                 final userModel = UserModel.fromFirestore(doc);
-                final vibeLevel = _computeVibeLevel(userModel.lastActive);
                 return SquadMember(
                   user: userModel,
-                  vibeLevel: vibeLevel,
                   lastVibeAt: userModel.lastActive,
                 );
               }).toList();
             });
       }).toList();
-      
+
       // Merge all streams using CombineLatestStream (same pattern as friendsProvider)
       if (streams.isEmpty) return Stream.value([]);
       if (streams.length == 1) return streams.first;
-      
+
       // CombineLatest emits whenever ANY chunk updates, with fresh complete list
       return CombineLatestStream.list(streams).map((listOfLists) {
         // Flatten List<List<SquadMember>> into single List<SquadMember>
@@ -155,9 +142,8 @@ final squadWithHealthProvider = StreamProvider<List<SquadMember>>((ref) {
   );
 });
 
-
 /// Squad Screen - 2025 Modern UI/UX
-/// 
+///
 /// Key Changes:
 /// - FAB moved to bottom thumb zone for reachability
 /// - Health-based visual hierarchy (glowing cards)
@@ -192,10 +178,7 @@ class _SquadScreenState extends ConsumerState<SquadScreen> {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Text(
-                          'Your Squad',
-                          style: AppTypography.headlineLarge,
-                        ),
+                        Text('Your Squad', style: AppTypography.headlineLarge),
                         const SizedBox(height: 4),
                         currentUser.when(
                           data: (user) => Text(
@@ -221,7 +204,7 @@ class _SquadScreenState extends ConsumerState<SquadScreen> {
                   if (members.isEmpty) {
                     return _buildEmptyState();
                   }
-                  
+
                   // 2025: Sort by recency, not "decay"
                   final sortedMembers = List<SquadMember>.from(members)
                     ..sort((a, b) {
@@ -229,7 +212,7 @@ class _SquadScreenState extends ConsumerState<SquadScreen> {
                       final timeB = b.lastVibeAt ?? DateTime(0);
                       return timeB.compareTo(timeA);
                     });
-                  
+
                   return ListView.builder(
                     padding: const EdgeInsets.fromLTRB(24, 8, 24, 100),
                     itemCount: sortedMembers.length,
@@ -272,7 +255,7 @@ class _SquadScreenState extends ConsumerState<SquadScreen> {
             context.push(AppRoutes.addFriends);
           },
           backgroundColor: AppColors.primaryAction,
-          icon: const Icon(Icons.person_add_rounded, color: Colors.black),
+          icon: AppIcon(AppIcons.addFriend, color: Colors.black),
           label: Text(
             'Add Friends',
             style: AppTypography.buttonText.copyWith(color: Colors.black),
@@ -285,7 +268,6 @@ class _SquadScreenState extends ConsumerState<SquadScreen> {
     );
   }
 
-
   Widget _buildEmptyState() {
     return Center(
       child: Padding(
@@ -293,15 +275,9 @@ class _SquadScreenState extends ConsumerState<SquadScreen> {
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            const AuraVisualization(
-              size: 150,
-              mood: AuraMood.calm,
-            ),
+            AppIcon(AppIcons.friends, size: 80, color: AppColors.textTertiary),
             const SizedBox(height: 32),
-            Text(
-              'Your squad is empty',
-              style: AppTypography.headlineMedium,
-            ),
+            Text('Your squad is empty', style: AppTypography.headlineMedium),
             const SizedBox(height: 8),
             Text(
               'Add friends to start sharing vibes',
@@ -327,13 +303,13 @@ class _SquadScreenState extends ConsumerState<SquadScreen> {
   /// 2025 Card with history-based styling
   Widget _buildSquadMemberCard(SquadMember member) {
     final friend = member.user;
-    final level = member.vibeLevel;
-    
+
     return GestureDetector(
       onLongPress: () => _showFriendOptions(context, member),
-      onTap: () { // FIXED: Make text/avatar tappable (Dead Zone Fix)
+      onTap: () {
+        // FIXED: Make text/avatar tappable (Dead Zone Fix)
         HapticFeedback.mediumImpact();
-        context.push(AppRoutes.camera); 
+        context.push(AppRoutes.camera);
       },
       child: GlassContainer(
         margin: const EdgeInsets.only(bottom: 12),
@@ -341,23 +317,22 @@ class _SquadScreenState extends ConsumerState<SquadScreen> {
         // LUMINOUS ARCHITECTURE: Use gradient borders instead of colored borders
         useLuminousBorder: true,
         // Move semantic color to subtle background tint
-        backgroundColor: _getLevelColor(level).withOpacity(0.05),
-        showGlow: level == VibeLevel.bloom || 
-                  friend.status == UserStatus.online ||
-                  friend.status == UserStatus.recording,
+        backgroundColor: _getStatusColor(friend.status).withOpacity(0.05),
+        showGlow:
+            friend.status == UserStatus.online ||
+            friend.status == UserStatus.recording,
         useSmallGlow: true,
-        glowColor: level == VibeLevel.bloom 
-            ? AppColors.statusLive 
-            : _getStatusColor(friend.status),
+        glowColor: _getStatusColor(friend.status),
         child: Opacity(
-          opacity: _getLevelOpacity(level),
+          // No opacity decay for now, keep it visible
+          opacity: 1.0,
           child: Row(
             children: [
               // Avatar with vibe ring
-              _buildVibeAvatar(friend, level),
-              
+              _buildVibeAvatar(friend),
+
               const SizedBox(width: 16),
-   
+
               // Friend info
               Expanded(
                 child: Column(
@@ -372,8 +347,6 @@ class _SquadScreenState extends ConsumerState<SquadScreen> {
                       children: [
                         if (friend.status == UserStatus.recording)
                           _buildRecordingIndicator()
-                        else if (level == VibeLevel.chill)
-                          _buildChillNudge()  // 🌫️ Low-key nudge
                         else
                           Text(
                             _getStatusText(friend),
@@ -384,10 +357,9 @@ class _SquadScreenState extends ConsumerState<SquadScreen> {
                   ],
                 ),
               ),
-   
-   
+
               const SizedBox(width: 12),
-   
+
               // Quick Send
               // Options Menu (3 dots)
               IconButton(
@@ -395,8 +367,8 @@ class _SquadScreenState extends ConsumerState<SquadScreen> {
                   HapticFeedback.lightImpact();
                   _showFriendOptions(context, member);
                 },
-                icon: const Icon(
-                  Icons.more_vert_rounded,
+                icon: AppIcon(
+                  AppIcons.moreVertical,
                   color: AppColors.textSecondary,
                   size: 20,
                 ),
@@ -413,26 +385,30 @@ class _SquadScreenState extends ConsumerState<SquadScreen> {
     );
   }
 
-  Widget _buildVibeAvatar(UserModel friend, VibeLevel level) {
-    final levelColor = _getLevelColor(level);
-    
+  Widget _buildVibeAvatar(UserModel friend) {
+    // Default to status color
+    final baseColor = _getStatusColor(friend.status);
+
     return Stack(
       children: [
         // Vibe ring glow with luminous border
         CustomPaint(
           painter: CircularLuminousBorderPainter(
             strokeWidth: 3,
-            baseColor: levelColor,
+            baseColor: baseColor,
           ),
           child: Container(
             width: 60,
             height: 60,
             decoration: BoxDecoration(
               shape: BoxShape.circle,
-              boxShadow: level == VibeLevel.bloom
+              // Subtle glow for active users
+              boxShadow:
+                  (friend.status == UserStatus.online ||
+                      friend.status == UserStatus.recording)
                   ? [
                       BoxShadow(
-                        color: AppColors.statusLive.withAlpha(76),
+                        color: baseColor.withOpacity(0.3),
                         blurRadius: 12,
                         spreadRadius: 2,
                       ),
@@ -452,31 +428,31 @@ class _SquadScreenState extends ConsumerState<SquadScreen> {
                         fit: BoxFit.cover,
                       ),
                     )
-                  : const Icon(
-                      Icons.person,
+                  : AppIcon(
+                      AppIcons.profile,
                       size: 24,
-                      color: Colors.white,
+                      color: AppColors.textPrimary,
                     ),
             ),
           ),
         ),
-        // Status dot
-        Positioned(
-          bottom: 0,
-          right: 0,
-          child: Container(
-            width: 16,
-            height: 16,
-            decoration: BoxDecoration(
-              color: _getStatusColor(friend.status),
-              shape: BoxShape.circle,
-              border: Border.all(
-                color: AppColors.background,
-                width: 2,
+        // Status dot - ONLY show for ACTIVE states (recording/listening)
+        // Online/offline is shown via text ("5m ago"), not binary dots
+        if (friend.status == UserStatus.recording ||
+            friend.status == UserStatus.listening)
+          Positioned(
+            bottom: 0,
+            right: 0,
+            child: Container(
+              width: 16,
+              height: 16,
+              decoration: BoxDecoration(
+                color: _getStatusColor(friend.status),
+                shape: BoxShape.circle,
+                border: Border.all(color: AppColors.background, width: 2),
               ),
             ),
           ),
-        ),
       ],
     );
   }
@@ -501,62 +477,6 @@ class _SquadScreenState extends ConsumerState<SquadScreen> {
         ),
       ],
     );
-  }
-
-  /// 🌫️ Chill nudge - Positive framing
-  Widget _buildChillNudge() {
-    return Row(
-      children: [
-        Icon(
-          Icons.water_drop_rounded, // 💧 Water Drop (Needs care)
-          size: 14,
-          color: AppColors.primaryAction.withOpacity(0.7), // Blue/Cyan tint
-        ),
-        const SizedBox(width: 4),
-        Text(
-          'Water the garden 🌱', // Nurturing CTA
-          style: AppTypography.bodySmall.copyWith(
-            color: AppColors.textSecondary,
-            fontStyle: FontStyle.italic,
-          ),
-        ),
-      ],
-    );
-  }
-
-
-  // Vibe level helpers (positive framing)
-  Color _getLevelColor(VibeLevel level) {
-    switch (level) {
-      case VibeLevel.bloom:  // 🌸 Active
-        return AppColors.statusLive;
-      case VibeLevel.steady: // ⚡ Steady
-        return AppColors.primaryAction;
-      case VibeLevel.chill:  // 🌫️ Chill
-        return Colors.grey;
-    }
-  }
-
-  Color _getLevelBorderColor(VibeLevel level) {
-    switch (level) {
-      case VibeLevel.bloom:
-        return AppColors.statusLive.withAlpha(76);
-      case VibeLevel.steady:
-        return AppColors.primaryAction.withAlpha(76);
-      case VibeLevel.chill:
-        return Colors.grey.withAlpha(76);
-    }
-  }
-
-  double _getLevelOpacity(VibeLevel level) {
-    switch (level) {
-      case VibeLevel.bloom:
-        return 1.0;
-      case VibeLevel.steady:
-        return 0.95;
-      case VibeLevel.chill:
-        return 0.85;
-    }
   }
 
   Color _getStatusColor(UserStatus status) {
@@ -590,27 +510,25 @@ class _SquadScreenState extends ConsumerState<SquadScreen> {
     }
   }
 
-  /// Show friend management options
-  Future<void> _showFriendOptions(BuildContext context, SquadMember member) async {
-    await showModalBottomSheet(
+  Future<void> _showFriendOptions(
+    BuildContext context,
+    SquadMember member,
+  ) async {
+    await AppModal.show(
       context: context,
-      backgroundColor: AppColors.surface,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
-      ),
-      builder: (context) => Container(
-        padding: const EdgeInsets.symmetric(vertical: 24, horizontal: 8),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 8),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
             // Friend info header
             ListTile(
               leading: CircleAvatar(
-                backgroundImage: member.user.avatarUrl != null 
-                    ? NetworkImage(member.user.avatarUrl!) 
+                backgroundImage: member.user.avatarUrl != null
+                    ? NetworkImage(member.user.avatarUrl!)
                     : null,
-                child: member.user.avatarUrl == null 
-                    ? const Icon(Icons.person) 
+                child: member.user.avatarUrl == null
+                    ? AppIcon(AppIcons.profile)
                     : null,
               ),
               title: Text(
@@ -618,24 +536,47 @@ class _SquadScreenState extends ConsumerState<SquadScreen> {
                 style: AppTypography.headlineSmall,
               ),
             ),
-            const Divider(color: Colors.white10),
-            
+            Divider(color: AppColors.surfaceGlassDim),
+
             // Remove Friend (soft exit)
             ListTile(
-              leading: const Icon(Icons.person_remove_outlined, color: AppColors.textSecondary),
-              title: const Text('Remove Friend', style: TextStyle(color: Colors.white)),
-              subtitle: const Text('They won\'t be notified', style: TextStyle(color: Colors.white54, fontSize: 12)),
+              leading: AppIcon(
+                AppIcons.removeFriend,
+                color: AppColors.textSecondary,
+              ),
+              title: Text(
+                'Remove Friend',
+                style: AppTypography.bodyLarge.copyWith(
+                  color: AppColors.textPrimary,
+                ),
+              ),
+              subtitle: Text(
+                'They won\'t be notified',
+                style: AppTypography.bodySmall.copyWith(
+                  color: AppColors.textSecondary,
+                ),
+              ),
               onTap: () {
                 Navigator.pop(context);
                 _confirmRemoveFriend(context, member);
               },
             ),
-            
+
             // Block (aggressive)
             ListTile(
-              leading: const Icon(Icons.block, color: AppColors.urgency),
-              title: const Text('Block', style: TextStyle(color: AppColors.urgency)),
-              subtitle: const Text('Hides all content from this person', style: TextStyle(color: Colors.white24, fontSize: 12)),
+              leading: AppIcon(AppIcons.block, color: AppColors.urgency),
+              title: Text(
+                'Block',
+                style: AppTypography.bodyLarge.copyWith(
+                  color: AppColors.urgency,
+                ),
+              ),
+              subtitle: Text(
+                'Hides all content from this person',
+                style: AppTypography.bodySmall.copyWith(
+                  color: AppColors.textTertiary,
+                ),
+              ),
               onTap: () {
                 Navigator.pop(context);
                 _confirmBlock(context, member);
@@ -646,17 +587,27 @@ class _SquadScreenState extends ConsumerState<SquadScreen> {
       ),
     );
   }
-  
+
   /// Confirm remove friend
-  Future<void> _confirmRemoveFriend(BuildContext context, SquadMember member) async {
+  Future<void> _confirmRemoveFriend(
+    BuildContext context,
+    SquadMember member,
+  ) async {
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
         backgroundColor: AppColors.surface,
-        title: const Text('Remove Friend?', style: TextStyle(color: Colors.white)),
+        title: Text(
+          'Remove Friend?',
+          style: AppTypography.headlineSmall.copyWith(
+            color: AppColors.textPrimary,
+          ),
+        ),
         content: Text(
           'Remove ${member.user.displayName} from your friend list? They won\'t be notified.',
-          style: const TextStyle(color: Colors.white70),
+          style: AppTypography.bodyMedium.copyWith(
+            color: AppColors.textSecondary,
+          ),
         ),
         actions: [
           TextButton(
@@ -665,28 +616,37 @@ class _SquadScreenState extends ConsumerState<SquadScreen> {
           ),
           TextButton(
             onPressed: () => Navigator.pop(context, true),
-            style: TextButton.styleFrom(foregroundColor: AppColors.textSecondary),
+            style: TextButton.styleFrom(
+              foregroundColor: AppColors.textSecondary,
+            ),
             child: const Text('Remove'),
           ),
         ],
       ),
     );
-    
+
     if (confirmed == true) {
       await _removeFriend(member.user.id);
     }
   }
-  
+
   /// Confirm block user
   Future<void> _confirmBlock(BuildContext context, SquadMember member) async {
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
         backgroundColor: AppColors.surface,
-        title: const Text('Block User?', style: TextStyle(color: Colors.white)),
+        title: Text(
+          'Block User?',
+          style: AppTypography.headlineSmall.copyWith(
+            color: AppColors.textPrimary,
+          ),
+        ),
         content: Text(
           'Block ${member.user.displayName}? You won\'t see their vibes anymore.',
-          style: const TextStyle(color: Colors.white70),
+          style: AppTypography.bodyMedium.copyWith(
+            color: AppColors.textSecondary,
+          ),
         ),
         actions: [
           TextButton(
@@ -701,17 +661,17 @@ class _SquadScreenState extends ConsumerState<SquadScreen> {
         ],
       ),
     );
-    
+
     if (confirmed == true) {
       await _blockUser(member.user.id);
     }
   }
-  
+
   /// Remove friend (silent)
   Future<void> _removeFriend(String friendId) async {
     try {
       await ref.read(authServiceProvider).removeFriend(friendId);
-      
+
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
@@ -731,12 +691,12 @@ class _SquadScreenState extends ConsumerState<SquadScreen> {
       }
     }
   }
-  
+
   /// Block user
   Future<void> _blockUser(String userId) async {
     try {
       await ref.read(vibeServiceProvider).blockUser(userId);
-      
+
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(

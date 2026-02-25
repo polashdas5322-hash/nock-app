@@ -1,24 +1,24 @@
 import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:ffmpeg_kit_flutter_new_https/ffmpeg_kit.dart';
-import 'package:ffmpeg_kit_flutter_new_https/return_code.dart';
+import 'package:ffmpeg_kit_flutter_new/ffmpeg_kit.dart';
+import 'package:ffmpeg_kit_flutter_new/return_code.dart';
 import 'package:appinio_social_share/appinio_social_share.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:http/http.dart' as http;
 import 'package:permission_handler/permission_handler.dart';
 import 'package:device_info_plus/device_info_plus.dart';
-import 'package:gal/gal.dart';  // Gallery saver for Save button
+import 'package:gal/gal.dart'; // Gallery saver for Save button
 
 /// Video export format type
-/// 
+///
 /// - [raw]: 1:1 square ratio, simple loop, preserves original memory (for Save button)
 /// - [viral]: 9:16 vertical ratio, blurred background, Instagram-ready (for Share button)
 enum VideoExportType { raw, viral }
 
 /// Viral Video Service - The "Share Your Aura" Engine
-/// 
+///
 /// Generates TikTok/Instagram-ready MP4 videos from image + audio.
 /// Uses FFmpeg to create a polished, 9:16 video with blurred background.
 class ViralVideoService {
@@ -47,20 +47,20 @@ class ViralVideoService {
         '-i', imagePath,
         '-hwaccel', 'auto',
         '-i', audioPath,
-        
+
         // COMPLEX FILTERS: Blurred background + scaled foreground
         '-filter_complex',
         '[0:v]scale=1080:1920:force_original_aspect_ratio=increase,crop=1080:1920,boxblur=20[bg];'
-        '[0:v]scale=1080:-1[fg];'
-        '[bg][fg]overlay=(W-w)/2:(H-h)/2',
-        
+            '[0:v]scale=1080:-1[fg];'
+            '[bg][fg]overlay=(W-w)/2:(H-h)/2',
+
         // 1. FORCE FRAMERATE & KEYFRAMES (TikTok/IG stability)
         '-r', '30',
         '-g', '60',
         '-keyint_min', '60',
         '-pix_fmt', 'yuv420p',
         '-movflags', '+faststart',
-        
+
         // 2. HARDWARE ENCODING (LGPL Compliant)
         '-c:v', Platform.isIOS ? 'h264_videotoolbox' : 'h264_mediacodec',
       ];
@@ -72,12 +72,7 @@ class ViralVideoService {
         args.addAll(['-b:v', '4M', '-profile:v', 'high']);
       }
 
-      args.addAll([
-        '-c:a', 'aac',
-        '-b:a', '192k',
-        '-shortest',
-        outputPath,
-      ]);
+      args.addAll(['-c:a', 'aac', '-b:a', '192k', '-shortest', outputPath]);
 
       debugPrint('ViralVideo: Generating video with args: $args');
       onProgress?.call(0.2);
@@ -111,31 +106,33 @@ class ViralVideoService {
   }) async {
     try {
       final tempDir = await getTemporaryDirectory();
-      
+
       onProgress?.call(0.05);
-      
+
       debugPrint('ViralVideo: Downloading image...');
       final imageResponse = await http.get(Uri.parse(imageUrl));
       if (imageResponse.statusCode != 200) {
         debugPrint('ViralVideo: Failed to download image');
         return null;
       }
-      final imagePath = '${tempDir.path}/viral_image_${DateTime.now().millisecondsSinceEpoch}.jpg';
+      final imagePath =
+          '${tempDir.path}/viral_image_${DateTime.now().millisecondsSinceEpoch}.jpg';
       await File(imagePath).writeAsBytes(imageResponse.bodyBytes);
-      
+
       onProgress?.call(0.2);
-      
+
       debugPrint('ViralVideo: Downloading audio...');
       final audioResponse = await http.get(Uri.parse(audioUrl));
       if (audioResponse.statusCode != 200) {
         debugPrint('ViralVideo: Failed to download audio');
         return null;
       }
-      final audioPath = '${tempDir.path}/viral_audio_${DateTime.now().millisecondsSinceEpoch}.m4a';
+      final audioPath =
+          '${tempDir.path}/viral_audio_${DateTime.now().millisecondsSinceEpoch}.m4a';
       await File(audioPath).writeAsBytes(audioResponse.bodyBytes);
-      
+
       onProgress?.call(0.4);
-      
+
       return await generateViralVideo(
         imagePath: imagePath,
         audioPath: audioPath,
@@ -150,7 +147,7 @@ class ViralVideoService {
   // ============ UNIFIED VIDEO GENERATION (Single Source of Truth) ============
 
   /// Generate video with configurable export type
-  /// 
+  ///
   /// This is the unified entry point for all video generation:
   /// - [raw]: 1:1 square, simple loop - for Save to Gallery
   /// - [viral]: 9:16 vertical, blurred background - for Social Sharing
@@ -171,25 +168,36 @@ class ViralVideoService {
       onProgress?.call(0.1);
 
       final List<String> args = ['-y'];
-      
+
       if (type == VideoExportType.viral) {
         // VIRAL FORMAT: 9:16 with blurred background (Instagram/TikTok ready)
         args.addAll([
-          '-hwaccel', 'auto',
-          '-loop', '1',
-          '-i', imagePath,
-          '-hwaccel', 'auto',
-          '-i', audioPath,
+          '-hwaccel',
+          'auto',
+          '-loop',
+          '1',
+          '-i',
+          imagePath,
+          '-hwaccel',
+          'auto',
+          '-i',
+          audioPath,
           '-filter_complex',
           '[0:v]scale=1080:1920:force_original_aspect_ratio=increase,crop=1080:1920,boxblur=20[bg];'
-          '[0:v]scale=1080:-1[fg];'
-          '[bg][fg]overlay=(W-w)/2:(H-h)/2',
-          '-r', '30',
-          '-g', '60',
-          '-keyint_min', '60',
-          '-pix_fmt', 'yuv420p',
-          '-movflags', '+faststart',
-          '-c:v', Platform.isIOS ? 'h264_videotoolbox' : 'h264_mediacodec',
+              '[0:v]scale=1080:-1[fg];'
+              '[bg][fg]overlay=(W-w)/2:(H-h)/2',
+          '-r',
+          '30',
+          '-g',
+          '60',
+          '-keyint_min',
+          '60',
+          '-pix_fmt',
+          'yuv420p',
+          '-movflags',
+          '+faststart',
+          '-c:v',
+          Platform.isIOS ? 'h264_videotoolbox' : 'h264_mediacodec',
         ]);
         if (Platform.isIOS) {
           args.addAll(['-b:v', '4M', '-profile:v', 'high']);
@@ -199,11 +207,13 @@ class ViralVideoService {
       } else {
         // RAW FORMAT: 1:1 square, center-cropped (for Gallery Save)
         // This creates a clean square video that fills gallery thumbnails
-        // 
+        //
         // IMPORTANT: Using HARDWARE ENCODERS (no GPL libx264)
         // -tune stillimage is libx264-specific, using -b:v instead
-        final rawEncoder = Platform.isIOS ? 'h264_videotoolbox' : 'h264_mediacodec';
-        
+        final rawEncoder = Platform.isIOS
+            ? 'h264_videotoolbox'
+            : 'h264_mediacodec';
+
         args.addAll([
           '-loop', '1',
           '-i', imagePath,
@@ -217,18 +227,13 @@ class ViralVideoService {
           '-map', '1:a',
           // Hardware Encoder (fast, no GPL issues)
           '-c:v', rawEncoder,
-          '-b:v', '2M',  // 2 Mbps (good for static image video)
+          '-b:v', '2M', // 2 Mbps (good for static image video)
           '-pix_fmt', 'yuv420p',
         ]);
       }
 
       // Common audio settings
-      args.addAll([
-        '-c:a', 'aac',
-        '-b:a', '192k',
-        '-shortest',
-        outputPath,
-      ]);
+      args.addAll(['-c:a', 'aac', '-b:a', '192k', '-shortest', outputPath]);
 
       debugPrint('MediaEngine: Generating ${type.name} video...');
       debugPrint('MediaEngine: Command args: ${args.join(' ')}');
@@ -240,20 +245,22 @@ class ViralVideoService {
       onProgress?.call(0.9);
 
       if (ReturnCode.isSuccess(returnCode)) {
-        debugPrint('MediaEngine: SUCCESS - ${type.name} video saved to $outputPath');
+        debugPrint(
+          'MediaEngine: SUCCESS - ${type.name} video saved to $outputPath',
+        );
         onProgress?.call(1.0);
         return File(outputPath);
       } else {
         final logs = await session.getOutput();
         debugPrint('MediaEngine: FFmpeg Error: $logs');
-        
+
         // Fallback to software encoder if hardware fails
         if (type == VideoExportType.viral) {
           debugPrint('MediaEngine: Retrying with software encoder...');
           return await generateVideo(
             imagePath: imagePath,
             audioPath: audioPath,
-            type: VideoExportType.raw,  // Fallback to simpler format
+            type: VideoExportType.raw, // Fallback to simpler format
             onProgress: onProgress,
           );
         }
@@ -268,12 +275,12 @@ class ViralVideoService {
   // ============ GALLERY SAVE (Single Source of Truth) ============
 
   /// Save media to device gallery
-  /// 
+  ///
   /// Handles all media types from camera:
   /// - Photo only → saves directly as image
   /// - Video only → saves directly as video
   /// - Photo + Audio → merges to MP4 (1:1 raw format) then saves
-  /// 
+  ///
   /// Returns true if save was successful
   Future<bool> saveToGallery({
     File? imageFile,
@@ -291,7 +298,7 @@ class ViralVideoService {
         final mergedVideo = await generateVideo(
           imagePath: imageFile.path,
           audioPath: audioFile.path,
-          type: VideoExportType.raw,  // 1:1 for gallery
+          type: VideoExportType.raw, // 1:1 for gallery
           onProgress: (p) => onProgress?.call(0.1 + p * 0.7),
         );
 
@@ -307,10 +314,10 @@ class ViralVideoService {
       // CASE 2: Photo only → Crop to 1:1 square then save
       if (imageFile != null) {
         debugPrint('MediaEngine: Photo → Cropping to 1:1 square...');
-        
+
         // Crop image to 1:1 square using FFmpeg
         final croppedImage = await _cropImageToSquare(imageFile.path);
-        
+
         if (croppedImage != null) {
           await Gal.putImage(croppedImage.path, album: albumName);
           onProgress?.call(1.0);
@@ -320,7 +327,9 @@ class ViralVideoService {
           // Fallback: save original if crop fails
           await Gal.putImage(imageFile.path, album: albumName);
           onProgress?.call(1.0);
-          debugPrint('MediaEngine: ✅ Original photo saved to gallery (crop failed)');
+          debugPrint(
+            'MediaEngine: ✅ Original photo saved to gallery (crop failed)',
+          );
           return true;
         }
       }
@@ -328,10 +337,10 @@ class ViralVideoService {
       // CASE 3: Video only → Crop to 1:1 square then save
       if (videoFile != null) {
         debugPrint('MediaEngine: Video → Cropping to 1:1 square...');
-        
+
         // Crop video to 1:1 square using FFmpeg
         final croppedVideo = await _cropVideoToSquare(videoFile.path);
-        
+
         if (croppedVideo != null) {
           await Gal.putVideo(croppedVideo.path, album: albumName);
           onProgress?.call(1.0);
@@ -341,14 +350,15 @@ class ViralVideoService {
           // Fallback: save original if crop fails
           await Gal.putVideo(videoFile.path, album: albumName);
           onProgress?.call(1.0);
-          debugPrint('MediaEngine: ✅ Original video saved to gallery (crop failed)');
+          debugPrint(
+            'MediaEngine: ✅ Original video saved to gallery (crop failed)',
+          );
           return true;
         }
       }
 
       debugPrint('MediaEngine: ⚠️ Nothing to save');
       return false;
-
     } catch (e) {
       debugPrint('MediaEngine: ❌ Save to gallery failed: $e');
       return false;
@@ -356,7 +366,7 @@ class ViralVideoService {
   }
 
   /// Crop image to 1:1 square using FFmpeg
-  /// 
+  ///
   /// Centers and crops to 1080x1080 for consistent gallery appearance
   Future<File?> _cropImageToSquare(String imagePath) async {
     try {
@@ -365,22 +375,25 @@ class ViralVideoService {
       final outputPath = '${dir.path}/vibe_square_$timestamp.jpg';
 
       debugPrint('MediaEngine: Input image path: $imagePath');
-      
+
       // Check if input file exists
       final inputFile = File(imagePath);
       if (!await inputFile.exists()) {
         debugPrint('MediaEngine: ❌ Input image file does not exist!');
         return null;
       }
-      
-      debugPrint('MediaEngine: Input file exists, size: ${await inputFile.length()} bytes');
+
+      debugPrint(
+        'MediaEngine: Input file exists, size: ${await inputFile.length()} bytes',
+      );
 
       // FFmpeg filter: scale to ensure shorter side is 1080, then center-crop to 1080x1080
       final args = [
         '-y',
         '-i', imagePath,
-        '-vf', 'scale=1080:1080:force_original_aspect_ratio=increase,crop=1080:1080',
-        '-q:v', '2',  // High quality JPEG
+        '-vf',
+        'scale=1080:1080:force_original_aspect_ratio=increase,crop=1080:1080',
+        '-q:v', '2', // High quality JPEG
         outputPath,
       ];
 
@@ -406,7 +419,6 @@ class ViralVideoService {
       }
 
       return null;
-
     } catch (e, stack) {
       debugPrint('MediaEngine: Image crop exception: $e');
       debugPrint('MediaEngine: Stack trace: $stack');
@@ -415,7 +427,7 @@ class ViralVideoService {
   }
 
   /// Crop video to 1:1 square using FFmpeg
-  /// 
+  ///
   /// Centers and crops to 1080x1080 for consistent gallery appearance
   /// Uses software encoding for maximum compatibility
   Future<File?> _cropVideoToSquare(String videoPath) async {
@@ -425,38 +437,41 @@ class ViralVideoService {
       final outputPath = '${dir.path}/vibe_square_$timestamp.mp4';
 
       debugPrint('MediaEngine: Input video path: $videoPath');
-      
+
       // Check if input file exists
       final inputFile = File(videoPath);
       if (!await inputFile.exists()) {
         debugPrint('MediaEngine: ❌ Input video file does not exist!');
         return null;
       }
-      
-      debugPrint('MediaEngine: Input file exists, size: ${await inputFile.length()} bytes');
+
+      debugPrint(
+        'MediaEngine: Input file exists, size: ${await inputFile.length()} bytes',
+      );
 
       // FFmpeg filter: scale to minimum 1080 on shorter side, then center-crop to 1080x1080
       // Using filter_complex for robust square crop
-      // 
+      //
       // IMPORTANT: Using HARDWARE ENCODERS (The Locket Way)
       // - ffmpeg_kit_flutter_new_https does NOT include full libx264 (GPL licensing)
       // - Using h264_mediacodec (Android) / h264_videotoolbox (iOS) for fast hardware encoding
       // - No -preset/-crf flags (libx264-specific), using -b:v for bitrate control instead
-      
+
       final encoder = Platform.isIOS ? 'h264_videotoolbox' : 'h264_mediacodec';
-      
+
       final args = [
         '-y',
         '-i', videoPath,
         // Simple and robust filter: scale then crop
         // scale=1080:1080:force_original_aspect_ratio=increase ensures min dimension is 1080
         // crop=1080:1080 takes center 1080x1080
-        '-filter_complex', '[0:v]scale=1080:1080:force_original_aspect_ratio=increase,crop=1080:1080[v]',
+        '-filter_complex',
+        '[0:v]scale=1080:1080:force_original_aspect_ratio=increase,crop=1080:1080[v]',
         '-map', '[v]',
-        '-map', '0:a?',  // Map audio if exists (? makes it optional)
+        '-map', '0:a?', // Map audio if exists (? makes it optional)
         // Hardware Encoder (fast, no GPL issues)
         '-c:v', encoder,
-        '-b:v', '4M',  // 4 Mbps bitrate (good quality for 1080x1080)
+        '-b:v', '4M', // 4 Mbps bitrate (good quality for 1080x1080)
         // Audio settings
         '-c:a', 'aac',
         '-b:a', '128k',
@@ -468,7 +483,7 @@ class ViralVideoService {
 
       debugPrint('MediaEngine: Cropping video to 1:1 square...');
       debugPrint('MediaEngine: FFmpeg args: ${args.join(' ')}');
-      
+
       final session = await FFmpegKit.executeWithArguments(args);
       final returnCode = await session.getReturnCode();
 
@@ -490,7 +505,6 @@ class ViralVideoService {
       }
 
       return null;
-
     } catch (e, stack) {
       debugPrint('MediaEngine: Video crop exception: $e');
       debugPrint('MediaEngine: Stack trace: $stack');
@@ -499,25 +513,30 @@ class ViralVideoService {
   }
 
   /// Download an existing video file for sharing
-  Future<File?> downloadVideo(String url, {void Function(double progress)? onProgress}) async {
+  Future<File?> downloadVideo(
+    String url, {
+    void Function(double progress)? onProgress,
+  }) async {
     try {
       final tempDir = await getTemporaryDirectory();
       onProgress?.call(0.1);
-      
+
       debugPrint('ViralVideo: Downloading existing video from $url');
       final response = await http.get(Uri.parse(url));
       onProgress?.call(0.8);
-      
+
       if (response.statusCode != 200) {
-        debugPrint('ViralVideo: Failed to download video (${response.statusCode})');
+        debugPrint(
+          'ViralVideo: Failed to download video (${response.statusCode})',
+        );
         return null;
       }
-      
+
       final timestamp = DateTime.now().millisecondsSinceEpoch;
       final path = '${tempDir.path}/vibe_shared_video_$timestamp.mp4';
       final file = File(path);
       await file.writeAsBytes(response.bodyBytes);
-      
+
       onProgress?.call(1.0);
       debugPrint('ViralVideo: Video downloaded to $path');
       return file;
@@ -582,11 +601,11 @@ class ViralVideoService {
 
       String? result;
       final appId = facebookAppId ?? 'YOUR_FB_APP_ID';
-      
+
       if (Platform.isAndroid) {
         // Android: shareToInstagramStory(appId, {stickerImage, backgroundImage, backgroundVideo, ...})
         result = await _socialShare.android.shareToInstagramStory(
-          appId,  // First positional arg: appId
+          appId, // First positional arg: appId
           backgroundVideo: videoPath,
           backgroundTopColor: '#000000',
           backgroundBottomColor: '#000000',
@@ -595,7 +614,7 @@ class ViralVideoService {
       } else if (Platform.isIOS) {
         // iOS: shareToInstagramStory(appId, {stickerImage, backgroundImage, backgroundVideo, ...})
         result = await _socialShare.iOS.shareToInstagramStory(
-          appId,  // First positional arg: appId
+          appId, // First positional arg: appId
           backgroundVideo: videoPath,
           backgroundTopColor: '#000000',
           backgroundBottomColor: '#000000',
@@ -626,7 +645,7 @@ class ViralVideoService {
         // iOS: shareToInstagramReels(String videoPath)
         result = await _socialShare.iOS.shareToInstagramReels(videoPath);
       }
-      
+
       return result ?? 'success';
     } catch (e) {
       debugPrint('ViralVideo: Error sharing to Instagram Reels: $e');
@@ -641,13 +660,17 @@ class ViralVideoService {
     try {
       if (Platform.isAndroid) {
         await _checkAndroidPermissions();
-        
+
         // Android: shareToTiktokStatus(List<String> filePaths)
-        final result = await _socialShare.android.shareToTiktokStatus([videoPath]);
+        final result = await _socialShare.android.shareToTiktokStatus([
+          videoPath,
+        ]);
         return result;
       } else {
         // iOS requires TikTok SDK setup - fallback to system share
-        debugPrint('ViralVideo: iOS TikTok requires SDK setup, using system share');
+        debugPrint(
+          'ViralVideo: iOS TikTok requires SDK setup, using system share',
+        );
         return await shareToSystem(videoPath, 'Check out my Vibe! 🎤 #vibeapp');
       }
     } catch (e) {
@@ -681,11 +704,7 @@ class ViralVideoService {
   Future<String> shareToSystem(String videoPath, String message) async {
     try {
       final file = XFile(videoPath);
-      await Share.shareXFiles(
-        [file],
-        text: message,
-        subject: 'My Vibe',
-      );
+      await Share.shareXFiles([file], text: message, subject: 'My Vibe');
       return 'success';
     } catch (e) {
       debugPrint('ViralVideo: Error sharing to system: $e');
@@ -781,10 +800,7 @@ class ViralVideoNotifier extends StateNotifier<ViralVideoState> {
       state = state.copyWith(isGenerating: false, progress: 1.0);
       return videoFile;
     } catch (e) {
-      state = state.copyWith(
-        isGenerating: false,
-        error: e.toString(),
-      );
+      state = state.copyWith(isGenerating: false, error: e.toString());
       return null;
     }
   }
@@ -797,6 +813,6 @@ class ViralVideoNotifier extends StateNotifier<ViralVideoState> {
 /// Provider for viral video state
 final viralVideoStateProvider =
     StateNotifierProvider<ViralVideoNotifier, ViralVideoState>((ref) {
-  final service = ref.watch(viralVideoServiceProvider);
-  return ViralVideoNotifier(service);
-});
+      final service = ref.watch(viralVideoServiceProvider);
+      return ViralVideoNotifier(service);
+    });

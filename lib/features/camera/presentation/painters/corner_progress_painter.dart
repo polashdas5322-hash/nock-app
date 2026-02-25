@@ -24,15 +24,20 @@ class CornerProgressPainter extends CustomPainter {
       ..strokeCap = StrokeCap.round;
 
     final rect = Rect.fromLTWH(
-      strokeWidth / 2, strokeWidth / 2,
-      size.width - strokeWidth, size.height - strokeWidth,
+      strokeWidth / 2,
+      strokeWidth / 2,
+      size.width - strokeWidth,
+      size.height - strokeWidth,
     );
     final rrect = RRect.fromRectAndRadius(rect, Radius.circular(cornerRadius));
-    
+
     final fullPath = Path()..addRRect(rrect);
     final pathMetrics = fullPath.computeMetrics().first;
-    final extractPath = pathMetrics.extractPath(0, pathMetrics.length * progress);
-    
+    final extractPath = pathMetrics.extractPath(
+      0,
+      pathMetrics.length * progress,
+    );
+
     // Glow effect
     final glowPaint = Paint()
       ..color = color.withAlpha(102)
@@ -40,11 +45,12 @@ class CornerProgressPainter extends CustomPainter {
       ..style = PaintingStyle.stroke
       ..strokeCap = StrokeCap.round
       ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 8);
-    
+
     canvas.drawPath(extractPath, glowPaint);
     canvas.drawPath(extractPath, paint);
   }
 
   @override
-  bool shouldRepaint(CornerProgressPainter oldDelegate) => oldDelegate.progress != progress;
+  bool shouldRepaint(CornerProgressPainter oldDelegate) =>
+      oldDelegate.progress != progress;
 }

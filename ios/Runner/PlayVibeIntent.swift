@@ -15,8 +15,9 @@ import SwiftUI
 /// might interrupt that audio."
 
 @available(iOS 17.0, *)
-struct VibeAudioPlaybackIntent: AudioPlaybackIntent {
-    static var title: LocalizedStringResource = "Play Vibe Audio"
+@available(iOS 17.0, *)
+struct PlayVibeIntent: AudioPlaybackIntent {
+    static var title: LocalizedStringResource = "Play Vibe"
     static var description = IntentDescription("Plays voice message audio from the home screen widget")
     
     @Parameter(title: "Audio URL")
@@ -64,11 +65,34 @@ struct VibeAudioPlaybackIntent: AudioPlaybackIntent {
         let audioManager = AudioManager.shared
         await audioManager.playAsync(url: url, senderName: senderName, vibeId: vibeId)
         
-        // Mark as played in shared UserDefaults
-        let sharedDefaults = UserDefaults(suiteName: "group.com.nock.nock")
-        sharedDefaults?.set(true, forKey: "isPlayed_\(vibeId)")
-        sharedDefaults?.set(Date(), forKey: "playedAt_\(vibeId)")
-        sharedDefaults?.synchronize()
+        // MARK: - ATOMIC READ RECEIPT (Critical Fix)
+        // Replaces UserDefaults (Race Condition) with Atomic File Write
+        if let containerURL = FileManager.default.containerURL(forSecurityApplicationGroupIdentifier: "group.com.nock.nock") {
+            let receiptsDir = containerURL.appendingPathComponent("read_receipts", isDirectory: true)
+            
+            // Ensure directory exists
+            try? FileManager.default.createDirectory(at: receiptsDir, withIntermediateDirectories: true)
+            
+            // Create unique filename: receipt_{timestamp}_{vibeId}.json
+            let timestamp = Int(Date().timeIntervalSince1970)
+            let filename = "receipt_\(timestamp)_\(vibeId).json"
+            let fileURL = receiptsDir.appendingPathComponent(filename)
+            
+            // Create JSON content
+            let receiptData: [String: Any] = [
+                "vibeId": vibeId,
+                "timestamp": timestamp,
+                "playedAt": ISO8601DateFormatter().string(from: Date())
+            ]
+            
+            if let jsonData = try? JSONSerialization.data(withJSONObject: receiptData) {
+                // Atomic Write: Write to temp file then move? 
+                // Actually, writing a small file in one go is atomic enough for this purpose 
+                // (Foundation write(to:) is atomic by default)
+                try? jsonData.write(to: fileURL, options: .atomic)
+                print("PlayVibeIntent: Wrote atomic receipt to \(filename)")
+            }
+        }
         
         // Trigger widget refresh to update UI (remove "NEW" indicator)
         WidgetCenter.shared.reloadTimelines(ofKind: "VibeWidget")

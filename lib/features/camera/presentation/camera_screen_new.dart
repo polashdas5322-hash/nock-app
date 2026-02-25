@@ -1,10 +1,11 @@
+
 import 'dart:io';
 import 'dart:async';
 import 'dart:math' as math;
 import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
 import 'package:phosphor_flutter/phosphor_flutter.dart';
-import 'package:google_fonts/google_fonts.dart';
+
 import 'package:flutter/services.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -18,7 +19,13 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:photo_manager_image_provider/photo_manager_image_provider.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:nock/core/theme/app_colors.dart';
+import 'package:nock/core/theme/app_dimens.dart';
 import 'package:nock/core/theme/app_typography.dart';
+import 'package:nock/shared/widgets/app_icon.dart';
+import 'package:nock/core/theme/app_icons.dart';
+
+import 'package:nock/core/utils/app_modal.dart';
+
 import 'package:nock/core/services/media_service.dart';
 import 'package:nock/core/services/audio_service.dart';
 import 'package:nock/core/services/native_service_helper.dart';
@@ -26,6 +33,7 @@ import 'package:nock/core/services/auth_service.dart';  // For user avatar in au
 import 'package:nock/core/services/vibe_service.dart';  // For direct send
 import 'package:nock/shared/widgets/aura_visualization.dart';  // For consistent audio visualization
 import 'package:nock/shared/widgets/glass_container.dart' as glass;  // For CircularLuminousBorderPainter (prefixed to avoid conflict)
+import 'package:nock/shared/widgets/vibe_bottom_sheet.dart';
 import 'package:nock/features/squad/presentation/squad_screen.dart';  // For friendsProvider
 import 'package:nock/core/models/vibe_model.dart';  // For reply context
 import 'package:nock/core/providers/vibe_upload_provider.dart';
@@ -40,6 +48,7 @@ import 'package:nock/features/camera/presentation/widgets/waveform_visualizer.da
 import 'package:nock/features/camera/presentation/widgets/smart_send_sheet.dart';
 import 'package:nock/features/camera/presentation/widgets/edit_tools_overlay.dart';
 import 'package:nock/features/camera/presentation/widgets/camera_portal_view.dart';
+import 'package:nock/features/camera/presentation/widgets/camera_face_pile.dart';
 import 'package:nock/features/camera/presentation/widgets/bioluminescent_orb.dart'; // V2 Orb
 import 'package:nock/core/services/viral_video_service.dart';  // Single source of truth for media operations
 
@@ -105,6 +114,18 @@ class _CameraScreenNewState extends ConsumerState<CameraScreenNew>
   Completer<void>? _ghostRecordingCompleter;
   
   bool get _hasCaptured => _capturedImage != null || _capturedVideo != null || (_isAudioOnlyMode && _recordedAudioFile != null);
+  
+  /// Computed screen mode — derives from existing booleans.
+  /// Priority: text editing > recording > editing > capture review > audio > idle.
+  CameraScreenMode get _screenMode {
+    if (_isEditingText) return CameraScreenMode.editingText;
+    if (_isRecordingVideo) return CameraScreenMode.recordingVideo;
+    if (_isRecordingAudio) return CameraScreenMode.audioRecording;
+    if (_hasCaptured && _currentEditMode != EditMode.none) return CameraScreenMode.editing;
+    if (_hasCaptured) return CameraScreenMode.reviewingCapture;
+    if (_isAudioOnlyMode) return CameraScreenMode.audioIdle;
+    return CameraScreenMode.cameraIdle;
+  }
   
   // Video preview player
   VideoPlayerController? _videoPreviewController;
@@ -229,20 +250,11 @@ class _CameraScreenNewState extends ConsumerState<CameraScreenNew>
   ];
   
   // Drawing colors (Luminescent Palette)
-  static const List<Color> _drawColors = [
-    Color(0xFFF0F0F0), // Ghost White
-    Color(0xFF39FF14), // Acid Green
-    Color(0xFF00F0FF), // Electric Cyan
-    Color(0xFFFF2A6D), // Glitch Red
-    Color(0xFF00FF9F), // Spring Green
-    Color(0xFF586069), // Gunmetal Grey
-    Colors.black,
-  ];
+  static const List<Color> _drawColors = AppColors.drawingPalette;
   
   // Sticker emoji sets
   static const List<String> _stickerEmojis = [
-    '😀', '😂', '🥰', '😍', '🤩', '😎', '🥳', '😜', '🤪', '😇',
-    '❤️', '🧡', '💛', '💚', '💙', '💜', '🖤', '💕', '💖', '💝',
+    '😀', '😂', '🤩', '😎', '🥳', '😜', '🤪', '😇',
     '👍', '👎', '👌', '✌️', '🤞', '🤟', '👏', '🙌', '💪', '🔥',
     '⭐', '✨', '🌟', '💫', '🎉', '🎊', '🎈', '🎁', '🏆', '🥇',
   ];
@@ -737,7 +749,7 @@ class _CameraScreenNewState extends ConsumerState<CameraScreenNew>
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text('Failed to start recording: ${e.toString().split(":").last}'),
-            backgroundColor: Colors.red,
+            backgroundColor: AppColors.error,
           ),
         );
       }
@@ -913,7 +925,7 @@ class _CameraScreenNewState extends ConsumerState<CameraScreenNew>
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text('Video preview failed. You can still send it.'),
-          backgroundColor: Colors.orange,
+          backgroundColor: AppColors.warning,
           duration: const Duration(seconds: 3),
         ),
       );
@@ -1025,13 +1037,13 @@ class _CameraScreenNewState extends ConsumerState<CameraScreenNew>
           child: Container(
             padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
             decoration: BoxDecoration(
-              color: Colors.black45,
+              color: AppColors.background.withOpacity(0.4), // More transparent HUD
               borderRadius: BorderRadius.circular(20),
-              border: Border.all(color: Colors.white24),
+              border: Border.all(color: Colors.white12), // Fainter border
             ),
             child: Text(
               '${cameraState.zoomLevel.toStringAsFixed(1)}x',
-              style: const TextStyle(
+              style: AppTypography.retroTag.copyWith(
                 color: Colors.white,
                 fontSize: 12,
                 fontWeight: FontWeight.w900,
@@ -1051,7 +1063,7 @@ class _CameraScreenNewState extends ConsumerState<CameraScreenNew>
       children: [
         Text(
           label,
-          style: GoogleFonts.spaceMono(
+          style: AppTypography.retroTag.copyWith(
             color: AppColors.telemetry.withOpacity(0.7),
             fontSize: 8,
             fontWeight: FontWeight.bold,
@@ -1065,7 +1077,7 @@ class _CameraScreenNewState extends ConsumerState<CameraScreenNew>
           children: [
             Text(
               value,
-              style: GoogleFonts.spaceMono(
+              style: AppTypography.retroTag.copyWith(
                 color: AppColors.textPrimary,
                 fontSize: 14,
                 fontWeight: FontWeight.bold,
@@ -1076,7 +1088,7 @@ class _CameraScreenNewState extends ConsumerState<CameraScreenNew>
                 padding: const EdgeInsets.only(left: 2),
                 child: Text(
                   unit,
-                  style: GoogleFonts.spaceMono(
+                  style: AppTypography.retroTag.copyWith(
                     color: AppColors.telemetry.withOpacity(0.5),
                     fontSize: 8,
                   ),
@@ -1346,30 +1358,16 @@ class _CameraScreenNewState extends ConsumerState<CameraScreenNew>
   // ============ STICKER BOTTOM SHEET ============
   
   void _showStickerBottomSheet() {
-    showModalBottomSheet(
+    AppModal.show(
       context: context,
-      backgroundColor: AppColors.surface,
-      isScrollControlled: true,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
-      ),
-      builder: (context) => DraggableScrollableSheet(
+      child: DraggableScrollableSheet(
         initialChildSize: 0.4,
         minChildSize: 0.3,
         maxChildSize: 0.6,
         expand: false,
         builder: (context, scrollController) => Column(
           children: [
-            // Handle
-            Container(
-              margin: const EdgeInsets.symmetric(vertical: 12),
-              width: 40,
-              height: 4,
-              decoration: BoxDecoration(
-                color: AppColors.textTertiary,
-                borderRadius: BorderRadius.circular(2),
-              ),
-            ),
+            const SizedBox(height: 16),
             
             // Header
             Padding(
@@ -1380,7 +1378,7 @@ class _CameraScreenNewState extends ConsumerState<CameraScreenNew>
                   const Spacer(),
                   IconButton(
                     onPressed: () => Navigator.pop(context),
-                    icon: const Icon(Icons.close, color: AppColors.textSecondary),
+                    icon: AppIcon(AppIcons.close, color: AppColors.textSecondary),
                   ),
                 ],
               ),
@@ -1410,7 +1408,7 @@ class _CameraScreenNewState extends ConsumerState<CameraScreenNew>
                         borderRadius: BorderRadius.circular(12),
                       ),
                       child: Center(
-                        child: Text(emoji, style: const TextStyle(fontSize: 28)),
+                        child: Text(emoji, style: AppTypography.displayMedium.copyWith(fontSize: 28)),
                       ),
                     ),
                   );
@@ -1450,16 +1448,28 @@ class _CameraScreenNewState extends ConsumerState<CameraScreenNew>
       
       try {
         final recipients = _preSelectedRecipientIds.toList();
-        // Don't clear yet, wait for success
         
-        for (final id in recipients) {
-          if (_isAudioOnlyMode) {
-             await _performAudioOnlyDirectSend(id);
-          } else {
-             // Await the task creation (returns task ID now)
-             await _performDirectSend(id);
-          }
+        // 🛑 FIX: Use BATCH upload instead of loop (1 upload for N recipients)
+        // This fixes the "3 toasts for 3 friends" bug and saves bandwidth
+        final payload = await _prepareMediaPayload();
+        if (payload == null) {
+          throw Exception("Failed to prepare media");
         }
+        
+        // Single batch call - 1 upload, N database writes
+        await ref.read(vibeUploadProvider.notifier).addBatchUploadBlocking(
+          receiverIds: recipients,
+          audioPath: payload['audioPath'],
+          imagePath: payload['imagePath'],
+          videoPath: payload['videoPath'],
+          overlayPath: payload['overlayPath'],
+          audioDuration: payload['duration'],
+          waveformData: payload['waveformData'],
+          isVideo: payload['isVideo'],
+          isAudioOnly: payload['isAudioOnly'],
+          isFromGallery: payload['isFromGallery'],
+          replyToVibeId: payload['replyToVibeId'],
+        );
         
         // 2. Artificial Handoff Delay (Trust)
         await Future.delayed(const Duration(milliseconds: 600));
@@ -1505,14 +1515,9 @@ class _CameraScreenNewState extends ConsumerState<CameraScreenNew>
     // Update the provider to fetch requested type
     ref.read(galleryRequestTypeProvider.notifier).state = type;
     
-    showModalBottomSheet(
+    AppModal.show(
       context: context,
-      isScrollControlled: true,
-      backgroundColor: AppColors.surface,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
-      ),
-      builder: (ctx) => DraggableScrollableSheet(
+      child: DraggableScrollableSheet(
         initialChildSize: 0.7,
         minChildSize: 0.5,
         maxChildSize: 0.95,
@@ -1523,15 +1528,6 @@ class _CameraScreenNewState extends ConsumerState<CameraScreenNew>
             
             return Column(
               children: [
-                const SizedBox(height: 12),
-                Container(
-                  width: 40,
-                  height: 4,
-                  decoration: BoxDecoration(
-                    color: Colors.white24,
-                    borderRadius: BorderRadius.circular(2),
-                  ),
-                ),
                 const SizedBox(height: 16),
                 Padding(
                   padding: const EdgeInsets.symmetric(horizontal: 20),
@@ -1540,7 +1536,7 @@ class _CameraScreenNewState extends ConsumerState<CameraScreenNew>
                     children: [
                       Text(
                         'Recent ${type == RequestType.common ? 'Media' : type == RequestType.image ? 'Photos' : 'Videos'}',
-                        style: const TextStyle(
+                        style: AppTypography.headlineSmall.copyWith(
                           color: Colors.white,
                           fontSize: 18,
                           fontWeight: FontWeight.bold,
@@ -1548,18 +1544,18 @@ class _CameraScreenNewState extends ConsumerState<CameraScreenNew>
                       ),
                       IconButton(
                         onPressed: () => Navigator.pop(ctx),
-                        icon: const Icon(Icons.close, color: Colors.white70),
+                        icon: AppIcon(AppIcons.close, color: AppColors.textSecondary),
                       ),
                     ],
                   ),
                 ),
-                const Divider(color: Colors.white10),
+                const Divider(color: AppColors.cardBorder),
                 Expanded(
                   child: assetsAsync.when(
                     data: (assets) {
                       if (assets.isEmpty) {
-                        return const Center(
-                          child: Text('No assets found', style: TextStyle(color: Colors.white54)),
+                        return Center(
+                          child: Text('No assets found', style: AppTypography.bodyMedium.copyWith(color: AppColors.textSecondary)),
                         );
                       }
                       
@@ -1588,8 +1584,8 @@ class _CameraScreenNewState extends ConsumerState<CameraScreenNew>
                                   thumbnailSize: const ThumbnailSize.square(200),
                                   fit: BoxFit.cover,
                                   errorBuilder: (_, __, ___) => Container(
-                                    color: Colors.grey[900],
-                                    child: const Icon(Icons.broken_image, color: Colors.white24),
+                                    color: AppColors.surfaceLight,
+                                    child: AppIcon(AppIcons.brokenImage, color: AppColors.textPlaceholder),
                                   ),
                                 ),
                                 if (asset.type == AssetType.video)
@@ -1599,12 +1595,12 @@ class _CameraScreenNewState extends ConsumerState<CameraScreenNew>
                                     child: Container(
                                       padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
                                       decoration: BoxDecoration(
-                                        color: Colors.black54,
+                                        color: AppColors.shadow,
                                         borderRadius: BorderRadius.circular(4),
                                       ),
                                       child: Text(
                                         _formatAssetDuration(asset.videoDuration),
-                                        style: const TextStyle(color: Colors.white, fontSize: 10),
+                                        style: AppTypography.labelSmall.copyWith(color: AppColors.textPrimary, fontSize: 10),
                                       ),
                                     ),
                                   ),
@@ -1618,7 +1614,7 @@ class _CameraScreenNewState extends ConsumerState<CameraScreenNew>
                       child: CircularProgressIndicator(color: AppColors.primaryAction),
                     ),
                     error: (err, _) => Center(
-                      child: Text('Error: $err', style: const TextStyle(color: Colors.red)),
+                      child: Text('Error: $err', style: AppTypography.bodyMedium.copyWith(color: AppColors.error)),
                     ),
                   ),
                 ),
@@ -1679,14 +1675,9 @@ class _CameraScreenNewState extends ConsumerState<CameraScreenNew>
   /// Show Smart Send Sheet (Material Design 3 / Snapchat pattern)
   /// Features: Quick Send Row (top) + Multi-Select List (bottom)
   void _showFriendPicker() {
-    showModalBottomSheet(
+    AppModal.show(
       context: context,
-      isScrollControlled: true, // Allows larger height
-      backgroundColor: AppColors.surface,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
-      ),
-      builder: (ctx) => FractionallySizedBox(
+      child: FractionallySizedBox(
         heightFactor: 0.75, // 75% of screen height like Snapchat/IG
         child: SmartSendSheet(
           isAudioOnly: _isAudioOnlyMode,
@@ -1695,10 +1686,10 @@ class _CameraScreenNewState extends ConsumerState<CameraScreenNew>
           onSendToOne: (String userId) async {
             // REMOVED: Navigator.pop(ctx); <-- Keep sheet open for feedback!
             if (_isAudioOnlyMode) {
-              return await _performAudioOnlyDirectSend(userId);
+              return await _performAudioOnlyDirectSend(userId, quietMode: true, isSilent: true);
             } else {
               // Return Task ID for the UI spinner
-              return await _performDirectSend(userId);
+              return await _performDirectSend(userId, isSilent: true);
             }
           },
           onSendToMany: (List<String> userIds) async {
@@ -1725,6 +1716,7 @@ class _CameraScreenNewState extends ConsumerState<CameraScreenNew>
               isFromGallery: payload['isFromGallery'],
               originalPhotoDate: payload['originalPhotoDate'], // Add if tracked
               replyToVibeId: payload['replyToVibeId'],
+              isSilent: true, // 🔇 Local UI handle feedback
             );
             
             return ["batch_success"]; // Signal success to SmartSendSheet
@@ -1797,14 +1789,12 @@ class _CameraScreenNewState extends ConsumerState<CameraScreenNew>
       imageFile = await _compositeImageWithOverlays();
       if (imageFile == null) imageFile = _capturedImage;
     } else if (_isAudioOnlyMode && _recordedAudioFile != null) {
-      // 🛑 FIX: Audio-Only Support (Fan-Out)
+      // 🟢 FIX: Audio-Only Support (Fan-Out)
       // Generate the Aura/Orb snapshot just like Single Send does
       imageFile = await _compositeImageWithOverlays();
       // Note: _compositeImageWithOverlays handles the "Audio Mode" UI capture automatically
       if (imageFile == null) {
          debugPrint('Warning: Audio composite generation failed');
-         // We should probably fail here or use a placeholder?
-         // For now, let it return null imageFile if failures, validation will catch it later.
       }
     } else {
        return null; // Nothing to send
@@ -1827,7 +1817,7 @@ class _CameraScreenNewState extends ConsumerState<CameraScreenNew>
 
   /// Perform direct send without going through preview screen
   /// Returns the Task ID string if successful
-  Future<String?> _performDirectSend(String receiverId) async {
+  Future<String?> _performDirectSend(String receiverId, {bool isSilent = false}) async {
     // REMOVED: Navigator.pop(context); <-- This was the "Fire and Forget" bug!
     // We now let the caller (SmartSendSheet) handle closing after feedback.
 
@@ -1853,6 +1843,7 @@ class _CameraScreenNewState extends ConsumerState<CameraScreenNew>
           isAudioOnly: payload['isAudioOnly'],
           isFromGallery: payload['isFromGallery'],
           replyToVibeId: payload['replyToVibeId'],
+          isSilent: isSilent,
       );
         
       return "blocking_success"; // Dummy return as we are blocking
@@ -1869,19 +1860,6 @@ class _CameraScreenNewState extends ConsumerState<CameraScreenNew>
   }
 
 
-      }
-      
-      return null; // Should not reach here if content exists
-
-    } catch (e) {
-      debugPrint('Error initiating send: $e');
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Error: $e')),
-        );
-      }
-    }
-  }
 
   /// Ask for notification permission contextually after user sends first vibe
   /// This is the "magic moment" - user just sent a message and wants to know when reply comes
@@ -2033,7 +2011,7 @@ class _CameraScreenNewState extends ConsumerState<CameraScreenNew>
                   height: 20,
                   child: CircularProgressIndicator(
                     strokeWidth: 2,
-                    color: Colors.white,
+                    color: AppColors.textPrimary,
                   ),
                 ),
                 SizedBox(width: 12),
@@ -2088,7 +2066,7 @@ class _CameraScreenNewState extends ConsumerState<CameraScreenNew>
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
             content: Text('Failed to add overlays to video. Sending original.'),
-            backgroundColor: Colors.orange,
+            backgroundColor: AppColors.warning,
           ),
         );
       }
@@ -2178,7 +2156,6 @@ class _CameraScreenNewState extends ConsumerState<CameraScreenNew>
               ),
             ),
           ),
-          _buildBackgroundDecorations(),
           
           // 2. Main Flex Layout
           Column(
@@ -2229,18 +2206,17 @@ final portalWidth = constraints.maxWidth;
                             height: portalHeight,
                             decoration: BoxDecoration(
                               color: AppColors.surface, // FIXED: Use Surface color for contrast against background
-                              borderRadius: BorderRadius.circular(24), // Locket-style corners
+                              borderRadius: BorderRadius.circular(AppDimens.r24), // Locket-style corners
                               boxShadow: [
                                 BoxShadow(
-                                  color: Colors.black.withOpacity(0.5),
+                                  color: AppColors.shadow,
                                   blurRadius: 30,
                                   spreadRadius: 5,
                                 ),
                               ],
                             ),
-                            child: ClipRRect(
-                              borderRadius: BorderRadius.circular(24),
-                              child: RepaintBoundary(
+                            clipBehavior: Clip.antiAlias, // Reduced 1 render layer by merging ClipRRect here
+                            child: RepaintBoundary(
                                 key: _captureKey,
                                 child: Stack(
                                   fit: StackFit.expand,
@@ -2286,9 +2262,9 @@ final portalWidth = constraints.maxWidth;
                                           : 0.0,
                                       onToggleAudioRecording: () {
                                          if (_isRecordingAudio) {
-                                           _stopAudioOnlyRecording();
+                                           _stopRecording();
                                          } else {
-                                           _startAudioOnlyRecording();
+                                           _startRecording();
                                          }
                                       },
                                     ),
@@ -2446,7 +2422,7 @@ final portalWidth = constraints.maxWidth;
                                                 progress: _recordingProgressController.value,
                                                 color: AppColors.error,
                                                 strokeWidth: 6,
-                                                cornerRadius: 24, // Match portal corners
+                                                cornerRadius: AppDimens.r24, // Match portal corners
                                               ),
                                             );
                                           },
@@ -2457,9 +2433,8 @@ final portalWidth = constraints.maxWidth;
                                 ),
                               ),
                             ),
-                          ),
-                        );
-                      },
+                          );
+                        },
                     ),
                   ),
                 ),
@@ -2479,42 +2454,15 @@ final portalWidth = constraints.maxWidth;
                   child: Column(
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                       // 1. Toolbar (Colors/Sliders)
-                       if (_hasCaptured && _currentEditMode != EditMode.none && !_isEditingText)
+                       // 1. Toolbar (Colors/Sliders) - only in editing mode (not text editing)
+                       if (_screenMode == CameraScreenMode.editing)
                           Padding(
                             padding: const EdgeInsets.only(bottom: 8),
-                            child: EditToolsOverlay(
-                                currentEditMode: _currentEditMode,
-                                drawColors: _drawColors,
-                                currentDrawColor: _currentDrawColor,
-                                currentStrokeWidth: _currentStrokeWidth,
-                                currentTextSize: _currentTextSize,
-                                currentFontStyle: _currentFontStyle,
-                                onColorChanged: (color) {
-                                  setState(() {
-                                    _currentDrawColor = color;
-                                    if (_currentEditMode == EditMode.text && _selectedTextIndex != null) {
-                                        final currentTexts = List<TextOverlay>.from(_textOverlaysNotifier.value);
-                                        currentTexts[_selectedTextIndex!].color = color;
-                                        _textOverlaysNotifier.value = currentTexts; 
-                                    }
-                                  });
-                                },
-                                onStrokeWidthChanged: (width) => setState(() => _currentStrokeWidth = width),
-                                onTextSizeChanged: (size) => _setTextSize(size),
-                                onFontStyleChanged: (style) => _setFontStyle(style),
-                                onFinishTextEditing: _finishTextEditing,
-                                textOverlaysNotifier: _textOverlaysNotifier,
-                                selectedTextIndex: _selectedTextIndex,
-                                textController: _textController,
-                                textFocusNode: _textFocusNode,
-                                isEditingText: _isEditingText,
-                              ),
-                          ),
+                             child: _buildEditToolsOverlay(),
+                           ),
                           
-                       // 2. Camera Controls (Flash/Flip) - before capture only
-                       // [FIX APPLIED] LOCK CONTROLS: Only show if initialized, curtain down, AND NOT RECORDING
-                       if (!_hasCaptured && !_showCurtain && cameraState.isInitialized && !_isRecordingVideo && !_isRecordingAudio)
+                       // 2. Camera Controls (Flash/Flip) - only in camera idle mode
+                       if (_screenMode == CameraScreenMode.cameraIdle && !_showCurtain && cameraState.isInitialized)
                          Visibility(
                            visible: !_isAudioOnlyMode,
                            maintainSize: true,
@@ -2526,13 +2474,18 @@ final portalWidth = constraints.maxWidth;
                            ),
                          ),
                           
-                       // 3. Edit Mode Buttons (Draw/Sticker) - after capture only
-                       // HIDE when editing text to follow user request "keyboard should coverAll editing option"
-                       if (_hasCaptured && !_isEditingText)
-                          Padding(
-                            padding: const EdgeInsets.only(bottom: 16),
-                            child: _buildEditOptions(),
-                          ),
+                       // 3. Edit Mode Buttons (Draw/Sticker) - after capture, hidden during text editing and sending
+                       if (_screenMode.isPostCapture)
+                         Visibility(
+                           visible: !_isEditingText && !_isMainSendLoading && !_showMainSendCheckmark,
+                           maintainSize: true,
+                           maintainAnimation: true,
+                           maintainState: true,
+                           child: Padding(
+                             padding: const EdgeInsets.only(bottom: 16),
+                             child: _buildEditOptions(),
+                           ),
+                         ),
                           
                        // 4. Main Action Buttons (Shutter / Retake&Send)
                        // HIDE when editing text to prevent layout shifts and focus user on typing
@@ -2550,68 +2503,12 @@ final portalWidth = constraints.maxWidth;
 
           // 4. Text Input Overlay (Root Stack, z-index top)
           if (_isEditingText)
-            EditToolsOverlay(
-              currentEditMode: _currentEditMode,
-              drawColors: _drawColors,
-              currentDrawColor: _currentDrawColor,
-              currentStrokeWidth: _currentStrokeWidth,
-              currentTextSize: _currentTextSize,
-              currentFontStyle: _currentFontStyle,
-              onColorChanged: (color) {
-                setState(() {
-                  _currentDrawColor = color;
-                  if (_currentEditMode == EditMode.text && _selectedTextIndex != null) {
-                      final currentTexts = List<TextOverlay>.from(_textOverlaysNotifier.value);
-                      currentTexts[_selectedTextIndex!].color = color;
-                      _textOverlaysNotifier.value = currentTexts; 
-                  }
-                });
-              },
-              onStrokeWidthChanged: (width) => setState(() => _currentStrokeWidth = width),
-              onTextSizeChanged: (size) => _setTextSize(size),
-              onFontStyleChanged: (style) => _setFontStyle(style),
-              onFinishTextEditing: _finishTextEditing,
-              textOverlaysNotifier: _textOverlaysNotifier,
-              selectedTextIndex: _selectedTextIndex,
-              textController: _textController,
-              textFocusNode: _textFocusNode,
-              isEditingText: _isEditingText,
-            ),
+            _buildEditToolsOverlay(),
         ],
       ),
     );
   }
 
-  Widget _buildBackgroundDecorations() {
-    return Stack(
-      children: [
-        Positioned(
-          top: -50,
-          right: -50,
-          child: Container(
-            width: 200,
-            height: 200,
-            decoration: BoxDecoration(
-              shape: BoxShape.circle,
-              color: AppColors.glassBackground, // Was alpha 25
-            ),
-          ),
-        ),
-        Positioned(
-          bottom: 100,
-          left: -80,
-          child: Container(
-            width: 180,
-            height: 180,
-            decoration: BoxDecoration(
-              shape: BoxShape.circle,
-              color: AppColors.glassBackgroundDark, // Was alpha 20
-            ),
-          ),
-        ),
-      ],
-    );
-  }
 
   // REMOVED: _buildAppTitle (User request to clean UI)
 
@@ -2626,8 +2523,8 @@ final portalWidth = constraints.maxWidth;
       return Positioned(
         top: statusBarHeight + 12,
         left: 16,
-        child: GlassButton(
-          icon: Icons.undo,
+        child: CameraGlassButton(
+          icon: AppIcons.undo,
           onPressed: _undoLastStroke,
         ),
       );
@@ -2649,10 +2546,10 @@ final portalWidth = constraints.maxWidth;
           height: 44,
           decoration: BoxDecoration(
             shape: BoxShape.circle,
-            color: AppColors.glassBackground, // Was Colors.white.withAlpha(25)
-            border: Border.all(color: AppColors.glassBorder, width: 1), // Was 51
+            color: AppColors.glassBackground.withOpacity(0.05), // Reduced from default
+            border: Border.all(color: AppColors.glassBorder, width: 1), 
           ),
-          child: const Icon(Icons.person_rounded, color: Colors.white, size: 22),
+          child: AppIcon(AppIcons.profile, color: Colors.white, size: 22),
         ),
       ),
     );
@@ -2660,7 +2557,7 @@ final portalWidth = constraints.maxWidth;
 
   Widget _buildTopRightButton(double statusBarHeight) {
     // Hide during recording or text editing for focus
-    if (_isRecordingVideo || _isRecordingAudio || _isEditingText) {
+    if (_screenMode.shouldHideControls) {
       return const SizedBox.shrink();
     }
     
@@ -2669,8 +2566,8 @@ final portalWidth = constraints.maxWidth;
       return Positioned(
         top: statusBarHeight + 12,
         right: 16,
-        child: GlassButton(
-          icon: Icons.delete,
+        child: CameraGlassButton(
+          icon: AppIcons.delete,
           onPressed: _deleteSelectedSticker,
           color: AppColors.error,
         ),
@@ -2680,8 +2577,8 @@ final portalWidth = constraints.maxWidth;
       return Positioned(
         top: statusBarHeight + 12,
         right: 16,
-        child: GlassButton(
-          icon: Icons.delete,
+        child: CameraGlassButton(
+          icon: AppIcons.delete,
           onPressed: _deleteSelectedText,
           color: AppColors.error,
         ),
@@ -2690,164 +2587,13 @@ final portalWidth = constraints.maxWidth;
     // NOTE: Redundant close button removed (Material Design 3 / Snapchat/Locket pattern)
     // Retake button at bottom handles discarding. Face Pile shows in preview for status.
     
-    // Face Pile: Show friend avatars (HTML-style top-right friends list)
+    // Face Pile: Show friend avatars (extracted to standalone widget)
     return Positioned(
       top: statusBarHeight + 12,
       right: 16,
-      child: Consumer(
-        builder: (context, ref, _) {
-          final friendsAsync = ref.watch(friendsProvider);
-
-          return friendsAsync.when(
-            data: (friends) {
-              // No Friends? Show "Add Friend" button
-              if (friends.isEmpty) {
-                return GlassButton(
-                  icon: Icons.person_add_rounded,
-                  onPressed: () {
-                    HapticFeedback.mediumImpact();
-                    context.push('/add-friends');
-                  },
-                );
-              }
-
-              // Friends available: Determine what to show based on selection state
-              final bool hasPreSelection = _preSelectedRecipientIds.isNotEmpty;
-              List<UserModel> displayFriends;
-              int badgeCount = 0;
-
-              if (!hasPreSelection) {
-                // STATE 1: No Selection -> Show top 3 friends + remaining count
-                displayFriends = friends.take(3).toList();
-                badgeCount = (friends.length > 3) ? (friends.length - 3) : 0;
-              } else {
-                // STATE 2: Selection Active -> Show selected friends + remaining SELECTED count
-                // Filter friends list to finding the user objects for selected IDs
-                final selectedFriendsList = friends.where((f) => _preSelectedRecipientIds.contains(f.id)).toList();
-                
-                // If we have selected IDs but can't find them in the friends list (edge case),
-                // we might show fewer avatars, but the badge should reflect the total selection.
-                
-                displayFriends = selectedFriendsList.take(3).toList();
-                
-                // Badge shows how many *selected* users are hidden
-                // Use _preSelectedRecipientIds.length as the truth for total selection count
-                badgeCount = (_preSelectedRecipientIds.length > 3) ? (_preSelectedRecipientIds.length - 3) : 0;
-              }
-
-              // Dynamic width calculation
-              const double overlap = 22.0;
-              const double avatarSize = 32.0;
-              final double badgeWidth = (badgeCount > 0) ? 28.0 : 0.0;
-              
-              // Calculate width based on ACTUAL displayed avatars
-              final int visibleCount = displayFriends.length;
-              final double containerWidth = visibleCount == 0 
-                  ? 48.0 // Fallback if nothing to show
-                  : ((visibleCount - 1) * overlap) + avatarSize + badgeWidth;
-
-              return GestureDetector(
-                onTap: () {
-                  HapticFeedback.mediumImpact();
-                  _showPreSelectionSheet();
-                },
-                child: Container(
-                  height: 48,
-                  width: containerWidth + 8, // Add padding for safety
-                  // NO VISUAL NOISE: Removed GlassContainer background entirely
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      // Avatars
-                      if (visibleCount > 0)
-                        Stack(
-                          alignment: Alignment.centerLeft,
-                          children: [
-                            SizedBox(
-                              width: ((visibleCount - 1) * overlap) + avatarSize,
-                              height: avatarSize,
-                            ),
-                            // Render avatars with overlap (last drawn = on top)
-                            ...List.generate(visibleCount, (index) {
-                              final friend = displayFriends[index];
-                              return Positioned(
-                                left: index * overlap,
-                                child: Container(
-                                  width: avatarSize,
-                                  height: avatarSize,
-                                  decoration: BoxDecoration(
-                                    shape: BoxShape.circle,
-                                    border: Border.all(color: Colors.white, width: 2),
-                                    color: Colors.grey[800],
-                                    image: friend.avatarUrl != null
-                                        ? DecorationImage(
-                                            image: NetworkImage(friend.avatarUrl!),
-                                            fit: BoxFit.cover,
-                                          )
-                                        : null,
-                                    boxShadow: const [
-                                      BoxShadow(
-                                        color: Colors.black26,
-                                        blurRadius: 4,
-                                        offset: Offset(0, 2),
-                                      )
-                                    ],
-                                  ),
-                                  child: friend.avatarUrl == null
-                                      ? Center(
-                                          child: Text(
-                                            friend.displayName.isNotEmpty
-                                                ? friend.displayName[0].toUpperCase()
-                                                : '?',
-                                            style: const TextStyle(
-                                              fontSize: 12,
-                                              fontWeight: FontWeight.bold,
-                                              color: Colors.white,
-                                            ),
-                                          ),
-                                        )
-                                      : null,
-                                ),
-                              );
-                            }),
-                          ],
-                        ),
-                        
-                      // Badge (Context-aware: either "more friends" or "more selected")
-                      if (badgeCount > 0) ...[
-                        const SizedBox(width: 4), // Tighter gap
-                        Container(
-                          width: 24, // Slightly wider for double digits
-                          height: 20,
-                          decoration: const BoxDecoration(
-                            color: Colors.transparent, 
-                            shape: BoxShape.circle,
-                          ),
-                          child: Center(
-                            child: Text(
-                              '+$badgeCount',
-                              style: TextStyle(
-                                color: hasPreSelection ? AppColors.primaryAction : Colors.white.withOpacity(0.8),
-                                fontSize: 13,
-                                fontWeight: FontWeight.w900,
-                              ),
-                            ),
-                          ),
-                        ),
-                      ],
-                    ],
-                  ),
-                ),
-              );
-            },
-            // Loading/Error states: show nothing to avoid layout shift
-            loading: () => const SizedBox.shrink(),
-            error: (_, __) => GlassButton(
-              icon: Icons.people_outline,
-              onPressed: () => context.push('/add-friends'),
-            ),
-          );
-        },
+      child: CameraFacePile(
+        preSelectedRecipientIds: _preSelectedRecipientIds,
+        onTap: _showPreSelectionSheet,
       ),
     );
   }
@@ -2855,14 +2601,9 @@ final portalWidth = constraints.maxWidth;
   /// Show pre-selection sheet (accessed from Face Pile in top-right)
   /// Allows selecting friends BEFORE capture for instant sending later.
   void _showPreSelectionSheet() {
-    showModalBottomSheet(
+    AppModal.show(
       context: context,
-      isScrollControlled: true,
-      backgroundColor: AppColors.surface,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
-      ),
-      builder: (ctx) => FractionallySizedBox(
+      child: FractionallySizedBox(
         heightFactor: 0.75,
         child: SmartSendSheet(
           isAudioOnly: _isAudioOnlyMode,
@@ -2944,7 +2685,7 @@ final portalWidth = constraints.maxWidth;
                           : null,
                       child: Text(
                         sticker.emoji, 
-                        style: const TextStyle(fontSize: 48)
+                        style: AppTypography.displayMedium.copyWith(fontSize: 48)
                       ),
                     ),
                   ),
@@ -3035,7 +2776,7 @@ final portalWidth = constraints.maxWidth;
                       style: textItem.fontStyle.getStyle(textItem.fontSize, textItem.color).copyWith(
                         shadows: [
                           Shadow(
-                            color: Colors.black54,
+                            color: AppColors.shadow,
                             offset: const Offset(1, 1),
                             blurRadius: 4,
                           ),
@@ -3061,7 +2802,7 @@ final portalWidth = constraints.maxWidth;
         child: Container(
           width: 12, height: 12,
           decoration: const BoxDecoration(
-            color: Colors.white,
+            color: AppColors.error,
             shape: BoxShape.circle,
           ),
         ),
@@ -3073,13 +2814,9 @@ final portalWidth = constraints.maxWidth;
   
   void _showTextColorPicker() {
     HapticFeedback.selectionClick();
-    showModalBottomSheet(
+    AppModal.show(
       context: context,
-      backgroundColor: AppColors.surface,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
-      ),
-      builder: (context) => Container(
+      child: Container(
         padding: const EdgeInsets.all(24),
         child: Column(
           mainAxisSize: MainAxisSize.min,
@@ -3111,7 +2848,7 @@ final portalWidth = constraints.maxWidth;
                       color: color,
                       shape: BoxShape.circle,
                       border: Border.all(
-                        color: isSelected ? AppColors.primaryAction : Colors.white24,
+                        color: isSelected ? AppColors.primaryAction : AppColors.glassBorderLight,
                         width: isSelected ? 3 : 1,
                       ),
                     ),
@@ -3135,7 +2872,7 @@ final portalWidth = constraints.maxWidth;
       // FLASH: Only show for Back Camera (Hardware limitation on front)
       if (!cameraState.isFrontCamera) ...[
         MiniPillButton(
-          icon: _getFlashIcon(cameraState.flashMode),
+          icon: _getFlashAppIcon(cameraState.flashMode),
           label: 'Flash',
           onTap: () {
             HapticFeedback.selectionClick();
@@ -3146,7 +2883,7 @@ final portalWidth = constraints.maxWidth;
       ],
       
       MiniPillButton(
-        icon: Icons.flip_camera_ios,
+        icon: AppIcons.switchCamera,
         label: 'Flip',
         onTap: () async {
           HapticFeedback.selectionClick();
@@ -3163,20 +2900,47 @@ final portalWidth = constraints.maxWidth;
   );
 }
 
-IconData _getFlashIcon(FlashMode mode) {
+PhosphorIconData _getFlashAppIcon(FlashMode mode) {
   switch (mode) {
     case FlashMode.off:
-      return Icons.flash_off;
+      return AppIcons.flashOff;
     case FlashMode.auto:
-      return Icons.flash_auto;
+      return AppIcons.flashAuto;
     case FlashMode.always:
-      return Icons.flash_on;
+      return AppIcons.flashOn;
     case FlashMode.torch:
-      return Icons.highlight;
+      return AppIcons.flashOn; // Torch uses same icon usually
     default:
-      return Icons.flash_off;
+      return AppIcons.flashOff;
   }
 }
+
+  /// Shared EditToolsOverlay builder — used in both the bottom toolbar
+  /// and the full-screen text editing overlay to keep props in sync.
+  Widget _buildEditToolsOverlay() {
+    return EditToolsOverlay(
+      currentEditMode: _currentEditMode,
+      drawColors: _drawColors,
+      currentDrawColor: _currentDrawColor,
+      currentStrokeWidth: _currentStrokeWidth,
+      currentTextSize: _currentTextSize,
+      currentFontStyle: _currentFontStyle,
+      onColorChanged: (color) {
+        setState(() {
+          _currentDrawColor = color;
+        });
+      },
+      onStrokeWidthChanged: (width) => setState(() => _currentStrokeWidth = width),
+      onTextSizeChanged: (size) => _setTextSize(size),
+      onFontStyleChanged: (style) => _setFontStyle(style),
+      onFinishTextEditing: _finishTextEditing,
+      textOverlaysNotifier: _textOverlaysNotifier,
+      selectedTextIndex: _selectedTextIndex,
+      textController: _textController,
+      textFocusNode: _textFocusNode,
+      isEditingText: _isEditingText,
+    );
+  }
 
   Widget _buildEditOptions() {
     // When audio is recorded (photo+audio OR audio-only), show audio controller bar
@@ -3188,36 +2952,36 @@ IconData _getFlashIcon(FlashMode mode) {
       mainAxisAlignment: MainAxisAlignment.center,
       children: [
         EditModeButton(
-          icon: Icons.brush,
+          icon: AppIcons.draw,
           label: 'Draw',
           isActive: _currentEditMode == EditMode.draw,
-          accentColor: const Color(0xFFFF6B6B), // Coral red accent
+          accentColor: AppColors.accentCoral, // Coral red accent
           onTap: () => _setEditMode(EditMode.draw),
         ),
         const SizedBox(width: 12),
         EditModeButton(
-          icon: Icons.emoji_emotions_outlined,
+          icon: AppIcons.sticker,
           label: 'Sticker',
           isActive: _currentEditMode == EditMode.sticker,
-          accentColor: const Color(0xFF4ECDC4), // Teal accent
+          accentColor: AppColors.accentTeal, // Teal accent
           onTap: () => _setEditMode(EditMode.sticker),
         ),
         const SizedBox(width: 12),
         EditModeButton(
-          icon: Icons.text_fields,
+          icon: AppIcons.text,
           label: 'Text',
           isActive: _currentEditMode == EditMode.text,
-          accentColor: const Color(0xFF667EEA), // Purple accent
+          accentColor: AppColors.accentPurple, // Purple accent
           onTap: () => _setEditMode(EditMode.text),
         ),
         // Audio button - only show for photos (videos already have audio)
         if (_capturedImage != null) ...[
           const SizedBox(width: 12),
           EditModeButton(
-            icon: Icons.mic_none_rounded,
+            icon: AppIcons.mic,
             label: 'Voiceover',
             isActive: _currentEditMode == EditMode.audio,
-            accentColor: const Color(0xFF00F0FF), // Cyan accent
+            accentColor: AppColors.accentCyan, // Cyan accent
             onTap: () => _setEditMode(EditMode.audio),
           ),
         ],
@@ -3255,9 +3019,9 @@ IconData _getFlashIcon(FlashMode mode) {
               height: 40,
               decoration: BoxDecoration(
                 shape: BoxShape.circle,
-                color: Colors.white.withOpacity(0.1),
+                color: AppColors.surfaceGlassDim,
               ),
-              child: const Icon(Icons.delete_outline, color: Colors.white, size: 22),
+              child: AppIcon(AppIcons.delete, color: Colors.white, size: 22),
             ),
           ),
           
@@ -3283,8 +3047,8 @@ IconData _getFlashIcon(FlashMode mode) {
                 shape: BoxShape.circle,
                 color: isPlaying ? AppColors.primaryAction : Colors.white.withOpacity(0.2),
               ),
-              child: Icon(
-                isPlaying ? Icons.pause : Icons.play_arrow,
+              child: AppIcon(
+                isPlaying ? AppIcons.pause : AppIcons.play,
                 color: Colors.white,
                 size: 24,
               ),
@@ -3304,7 +3068,7 @@ IconData _getFlashIcon(FlashMode mode) {
           // Duration
           Text(
             '${(_audioDuration ~/ 60).toString().padLeft(1, '0')}:${(_audioDuration % 60).toString().padLeft(2, '0')}',
-            style: const TextStyle(
+            style: AppTypography.bodyMedium.copyWith(
               color: Colors.white,
               fontSize: 14,
               fontWeight: FontWeight.w500,
@@ -3316,8 +3080,7 @@ IconData _getFlashIcon(FlashMode mode) {
   }
 
   Widget _buildMainBottomControls() {
-    // FIX #1 & #4: Audio-Only mode now has symmetric 3-button layout matching Camera mode
-    // This keeps the user's thumb in the same "Action Zone" for consistency
+    // FIX: Centered layout with fixed spacing to prevent drifting on wide screens
     if (_isAudioOnlyMode) {
       // During audio recording, only show mic button (centered) for clean UI
       if (_isRecordingAudio) {
@@ -3326,41 +3089,45 @@ IconData _getFlashIcon(FlashMode mode) {
         );
       }
       
-      return Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 40),
-        child: Row(
-          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-          crossAxisAlignment: CrossAxisAlignment.center,
-          children: [
-            // LEFT: Gallery (for uploading old audio)
-            BottomNavButton(
-              icon: Icons.photo_library_rounded,
-              label: 'Gallery',
-              onTap: () => _showGalleryPicker(),
-            ),
-            
-            // CENTER: Mic Shutter Button (matches camera shutter position)
-            _buildMicCaptureButton(),
-            
-            // RIGHT: Back to Camera
-            BottomNavButton(
-              icon: Icons.camera_alt_rounded,
-              label: 'Camera',
-              onTap: () {
-                HapticFeedback.selectionClick();
-                // Cancel any in-progress recording
-                if (_isRecordingAudio) {
-                  ref.read(recordingStateProvider.notifier).stopRecording();
-                  setState(() => _isRecordingAudio = false);
-                }
-                setState(() => _isAudioOnlyMode = false);
-                // Bring Green Dot back for Camera Mode (re-init if needed)
-                _resumeCamera();
-                _notifyCaptureState(); // Show history indicator
-              },
-            ),
-          ],
-        ),
+      // Define the Camera Button (Back to Camera Mode)
+      // We use this instance on the LEFT, and as an invisible placeholder on the RIGHT for balance
+      final cameraButton = BottomNavButton(
+        icon: AppIcons.camera,
+        label: 'Camera',
+        onTap: () {
+          HapticFeedback.selectionClick();
+          // Cancel any in-progress recording
+          if (_isRecordingAudio) {
+            ref.read(recordingStateProvider.notifier).stopRecording();
+            setState(() => _isRecordingAudio = false);
+          }
+          setState(() => _isAudioOnlyMode = false);
+          // Bring Green Dot back for Camera Mode (re-init if needed)
+          _resumeCamera();
+          _notifyCaptureState(); // Show history indicator
+        },
+      );
+      
+      return Row(
+        mainAxisAlignment: MainAxisAlignment.center,
+        crossAxisAlignment: CrossAxisAlignment.center,
+        children: [
+          // LEFT: Camera (Moved from Right - Replaces Gallery in Audio Mode)
+          cameraButton,
+          
+          const SizedBox(width: 48), // Fixed Gap: Prevents drifting
+
+          // CENTER: Mic Shutter Button (matches camera shutter position)
+          _buildMicCaptureButton(),
+          
+          const SizedBox(width: 48), // Fixed Gap
+
+          // RIGHT: Empty Placeholder (to balance layout and keep Mic centered)
+          Opacity(
+            opacity: 0.0,
+            child: IgnorePointer(child: cameraButton),
+          ),
+        ],
       );
     }
     
@@ -3372,57 +3139,58 @@ IconData _getFlashIcon(FlashMode mode) {
       );
     }
     
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 40),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-        crossAxisAlignment: CrossAxisAlignment.center,
-        children: [
-          // LEFT: Gallery / Vault
-          BottomNavButton(
-            icon: Icons.photo_library_rounded,
-            label: 'Gallery',
-            onTap: () => _showGalleryPicker(),
-          ),
-          
-          // CENTER: Capture Button
-          _buildCaptureButton(),
-          
-          // RIGHT: Audio Mode Toggle
-          BottomNavButton(
-            icon: Icons.mic,
-            label: 'Audio',
-            onTap: () {
-              HapticFeedback.selectionClick();
-              setState(() {
-                _isAudioOnlyMode = !_isAudioOnlyMode;
-              });
-              
-              if (_isAudioOnlyMode) {
-                _checkMicPermission();
-              }
-              
-              // Toggle camera sensor based on mode
-              final controller = ref.read(cameraControllerProvider).controller;
-              if (_isAudioOnlyMode) {
-                controller?.pausePreview(); // Kill Green Dot in Audio Mode
-              } else {
-                _resumeCamera(); // Bring Green Dot back for Camera (re-init if needed)
-              }
-              
-              _notifyCaptureState(); // Hide/show history indicator
-            },
-          ),
-        ],
-      ),
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.center,
+      crossAxisAlignment: CrossAxisAlignment.center,
+      children: [
+        // LEFT: Gallery / Vault
+        BottomNavButton(
+          icon: AppIcons.gallery,
+          label: 'Gallery',
+          onTap: () => _showGalleryPicker(),
+        ),
+        
+        const SizedBox(width: 48), // Fixed Gap
+
+        // CENTER: Capture Button
+        _buildCaptureButton(),
+        
+        const SizedBox(width: 48), // Fixed Gap
+
+        // RIGHT: Audio Mode Toggle
+        BottomNavButton(
+          icon: AppIcons.mic,
+          label: 'Audio',
+          onTap: () {
+            HapticFeedback.selectionClick();
+            setState(() {
+              _isAudioOnlyMode = !_isAudioOnlyMode;
+            });
+            
+            if (_isAudioOnlyMode) {
+              _checkMicPermission();
+            }
+            
+            // Toggle camera sensor based on mode
+            final controller = ref.read(cameraControllerProvider).controller;
+            if (_isAudioOnlyMode) {
+              controller?.pausePreview(); // Kill Green Dot in Audio Mode
+            } else {
+              _resumeCamera(); // Bring Green Dot back for Camera (re-init if needed)
+            }
+            
+            _notifyCaptureState(); // Hide/show history indicator
+          },
+        ),
+      ],
     );
   }
   
-  /// Start audio-only recording with Tap-to-Start/Stop pattern
-  void _startAudioOnlyRecording() async {
+  /// Start audio recording (used for both audio-only and photo+voiceover modes).
+  void _startRecording() async {
     HapticFeedback.heavyImpact();
     setState(() => _isRecordingAudio = true);
-    _notifyCaptureState(); // Hide history indicator
+    if (_isAudioOnlyMode) _notifyCaptureState(); // Hide history indicator
     
     // FIX: Stop any active audio playback before starting new recording
     ref.read(audioServiceProvider).stop();
@@ -3433,18 +3201,18 @@ IconData _getFlashIcon(FlashMode mode) {
         _isRecordingAudio = false;
         _isMicPermissionGranted = false;
       });
-      _notifyCaptureState(); // Restore history indicator
+      if (_isAudioOnlyMode) _notifyCaptureState(); // Restore history indicator
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
           content: Text('Microphone permission required'),
-          backgroundColor: Colors.orange,
+          backgroundColor: AppColors.warning,
         ),
       );
     }
   }
   
-  /// Stop audio-only recording and show friend picker (consistent with Photo/Video)
-  void _stopAudioOnlyRecording() async {
+  /// Stop audio recording (used for both audio-only and photo+voiceover modes).
+  void _stopRecording() async {
     HapticFeedback.mediumImpact();
     final path = await ref.read(recordingStateProvider.notifier).stopRecording();
     
@@ -3452,146 +3220,38 @@ IconData _getFlashIcon(FlashMode mode) {
       final timerDuration = ref.read(recordingDurationProvider);
       final actualDuration = timerDuration > 0 ? timerDuration : 1;
       
-      // NOTE: We NO LONGER clear duration/waveform here 
-      // because AudioService now handles clearing at the START of next recording.
-      // This allows us to use the data for sending!
-      
-      // Store the recorded audio file - UI will show audio controller bar
-      // User can preview/delete audio before tapping send button
       setState(() {
         _recordedAudioFile = File(path);
         _audioDuration = actualDuration;
         _isRecordingAudio = false;
-        // _hasCaptured getter now includes audio-only mode condition
+        if (!_isAudioOnlyMode) _currentEditMode = EditMode.none; // Auto-exit audio edit mode
       });
       
-      // NOTE: Friend picker is now triggered by the send button (checkmark)
-      // This matches the reference UI design with audio controller bar
+      // Show feedback only for voiceover mode (audio-only uses the controller bar)
+      if (!_isAudioOnlyMode) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Row(
+              children: [
+                PhosphorIcon(PhosphorIcons.microphone(PhosphorIconsStyle.fill), color: Colors.white, size: 18),
+                const SizedBox(width: 8),
+                Text('Voice note added ($_audioDuration s)'),
+              ],
+            ),
+            backgroundColor: Colors.green.shade700,
+            duration: const Duration(seconds: 2),
+          ),
+        );
+      }
     } else {
       setState(() => _isRecordingAudio = false);
     }
   }
-  
-  /// Show friend picker for Audio-Only mode (consistent with Photo/Video flow)
-  void _showAudioOnlyFriendPicker() {
-    showModalBottomSheet(
-      context: context,
-      backgroundColor: const Color(0xFF1A1A1A),
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
-      ),
-      builder: (ctx) => Consumer(
-        builder: (ctx, ref, _) {
-          final friendsAsync = ref.watch(friendsProvider);
-          
-          return Container(
-            padding: const EdgeInsets.all(24),
-            constraints: BoxConstraints(
-              maxHeight: MediaQuery.of(ctx).size.height * 0.6,
-            ),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
-                  children: [
-                    const Icon(Icons.mic, color: Color(0xFF00F0FF)),
-                    const SizedBox(width: 8),
-                    Text(
-                      'Send Audio Vibe (${_audioDuration}s)',
-                      style: const TextStyle(
-                        color: Colors.white,
-                        fontSize: 20,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 16),
-                
-                Expanded(
-                  child: friendsAsync.when(
-                    data: (friends) {
-                      if (friends.isEmpty) {
-                        return Center(
-                          child: Column(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              const Icon(Icons.people_outline, color: Colors.grey, size: 48),
-                              const SizedBox(height: 16),
-                              const Text(
-                                'No friends yet',
-                                style: TextStyle(color: Colors.white),
-                              ),
-                              const SizedBox(height: 8),
-                              TextButton(
-                                onPressed: () {
-                                  Navigator.pop(ctx);
-                                  context.push('/add-friends');
-                                },
-                                child: const Text('Add Friends'),
-                              ),
-                            ],
-                          ),
-                        );
-                      }
-                      
-                      return ListView.separated(
-                        itemCount: friends.length,
-                        separatorBuilder: (_, __) => const SizedBox(height: 12),
-                        itemBuilder: (context, index) {
-                          final friend = friends[index];
-                          return ListTile(
-                            contentPadding: EdgeInsets.zero,
-                            leading: CircleAvatar(
-                              radius: 24,
-                              backgroundImage: friend.avatarUrl != null
-                                  ? NetworkImage(friend.avatarUrl!)
-                                  : null,
-                              backgroundColor: Colors.grey[800],
-                              child: friend.avatarUrl == null
-                                  ? Text(friend.displayName[0].toUpperCase())
-                                  : null,
-                            ),
-                            title: Text(
-                              friend.displayName,
-                              style: const TextStyle(
-                                color: Colors.white,
-                                fontWeight: FontWeight.bold,
-                              ),
-                            ),
-                            trailing: Container(
-                              padding: const EdgeInsets.all(8),
-                              decoration: const BoxDecoration(
-                                color: Color(0xFF00F0FF),
-                                shape: BoxShape.circle,
-                              ),
-                              child: const Icon(Icons.send, color: Colors.black, size: 20),
-                            ),
-                            onTap: () => _performAudioOnlyDirectSend(friend.id),
-                          );
-                        },
-                      );
-                    },
-                    loading: () => const Center(
-                      child: CircularProgressIndicator(color: Color(0xFF00F0FF)),
-                    ),
-                    error: (_, __) => const Center(
-                      child: Text('Error loading friends', style: TextStyle(color: Colors.red)),
-                    ),
-                  ),
-                ),
-              ],
-            ),
-          );
-        },
-      ),
-    );
-  }
+
   
   /// Perform direct send for audio-only vibes (consistent with Photo/Video)
   /// Returns Task ID if successful
-  Future<String?> _performAudioOnlyDirectSend(String receiverId) async {
+  Future<String?> _performAudioOnlyDirectSend(String receiverId, {bool quietMode = false, bool isSilent = false}) async {
     // REMOVED: Navigator.pop(context); <-- Let caller (Sheet) handle closing/feedback
 
     // Safety check: Ensure widget is still active before finding Scaffold
@@ -3617,9 +3277,10 @@ IconData _getFlashIcon(FlashMode mode) {
       File? imageFile = await _compositeImageWithOverlays();
       debugPrint('🔍 [CameraScreen] Aura snapshot captured: exists=${imageFile != null}, path=${imageFile?.path}');
       
-      // Trigger background upload
-      debugPrint('📤 [CameraScreen] Triggering background upload (audio-only) to receiver $receiverId');
-      final taskId = await ref.read(vibeUploadProvider.notifier).addUpload(
+      // 🛑 BLOCKING UPLOAD: Consistent with Photo/Video flow
+      // User waits for upload completion (no fire-and-forget)
+      debugPrint('📤 [CameraScreen] Triggering BLOCKING upload (audio-only) to receiver $receiverId');
+      await ref.read(vibeUploadProvider.notifier).addUploadBlocking(
         receiverId: receiverId,
         audioPath: _recordedAudioFile?.path,
         audioDuration: _audioDuration,
@@ -3629,7 +3290,9 @@ IconData _getFlashIcon(FlashMode mode) {
         isVideo: false,
         isAudioOnly: true,
         isFromGallery: false,
+        isSilent: isSilent,
       );
+      const taskId = "blocking_success"; // Consistent return value with _performDirectSend
       
       // 3. CONTEXT-AWARE NAVIGATION (2026 UX Best Practice)
       // Walkie-Talkie Mode: Stay in mode for rapid exchanges
@@ -3646,20 +3309,22 @@ IconData _getFlashIcon(FlashMode mode) {
           });
           
           // Success feedback without navigation
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Row(
-                children: [
-                  Icon(Icons.check_circle, color: Color(0xFF00F0FF), size: 20),
-                  SizedBox(width: 12),
-                  Text('Sent! Ready for next message', style: TextStyle(fontWeight: FontWeight.bold)),
-                ],
+          if (!quietMode) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Row(
+                  children: [
+                    AppIcon(AppIcons.check, color: AppColors.accentCyan, size: 20),
+                    SizedBox(width: 12),
+                    Text('Sent! Ready for next message', style: AppTypography.bodyMedium.copyWith(fontWeight: FontWeight.bold)),
+                  ],
+                ),
+                backgroundColor: AppColors.surface,
+                behavior: SnackBarBehavior.floating,
+                duration: Duration(seconds: 1),
               ),
-              backgroundColor: Color(0xFF1E1E1E),
-              behavior: SnackBarBehavior.floating,
-              duration: Duration(seconds: 1),
-            ),
-          );
+            );
+          }
         } else {
           // GENERAL CAMERA: Clean state but DO NOT navigate (Sheet handles flow)
           // If we are here, it means we sent successfully.
@@ -3689,117 +3354,7 @@ IconData _getFlashIcon(FlashMode mode) {
     }
   }
   
-  /// Build beautiful background for Audio-Only mode in camera view
-  /// Premium glassmorphic orb design with waveform visualization
-  Widget _buildAudioOnlyModeBackground() {
-    final userAsync = ref.watch(currentUserProvider);
-    
-    return Stack(
-      fit: StackFit.expand,
-      children: [
-        // Layer 1: Profile image or gradient base
-        userAsync.when(
-          data: (user) {
-            if (user?.avatarUrl != null && user!.avatarUrl!.isNotEmpty) {
-              return Image.network(
-                user.avatarUrl!,
-                fit: BoxFit.cover,
-                errorBuilder: (_, __, ___) => _buildAudioModeGradient(),
-              );
-            }
-            return _buildAudioModeGradient();
-          },
-          loading: () => _buildAudioModeGradient(),
-          error: (_, __) => _buildAudioModeGradient(),
-        ),
-        
-        // Layer 2: Heavy blur effect
-        BackdropFilter(
-          filter: ui.ImageFilter.blur(sigmaX: 50, sigmaY: 50),
-          child: Container(color: Colors.transparent),
-        ),
-        
-        // Layer 3: Dark overlay for contrast
-        Container(
-          decoration: BoxDecoration(
-            gradient: LinearGradient(
-              begin: Alignment.topCenter,
-              end: Alignment.bottomCenter,
-              colors: [
-                Colors.black.withOpacity(0.2),
-                Colors.black.withOpacity(0.4),
-                Colors.black.withOpacity(0.6),
-              ],
-            ),
-          ),
-        ),
-        
-        // Layer 4: AuraVisualization for consistent look with preview
-        // Layer 4: AuraVisualization REMOVED for "Noir Void" Design (Visual Noise Reduction)
-        // The background is now purely the dark overlay + blurred avatar.
-        
-        // Layer 5: Main content - Compact layout for portal
-        Center(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              // Title text
-              // Title text / Prompt
-              Text(
-                _isRecordingAudio ? 'Today, I want to tell...' : 'Tap to start',
-                style: TextStyle(
-                  color: Colors.white.withOpacity(0.9),
-                  fontSize: 22, // Larger prompt size
-                  fontWeight: FontWeight.w600,
-                  letterSpacing: 0.5,
-                ),
-              ),
-              
-              const SizedBox(height: 24),
-              
-              // MAIN: Isolated Waveform & Duration Updates
-              RepaintBoundary(
-                child: Consumer(
-                  builder: (context, ref, _) {
-                    final recordingDuration = ref.watch(recordingDurationProvider);
-                    final waveform = ref.watch(waveformDataProvider);
-                    // Get amplitude for reactive pulse (0.0 to 1.0)
-                    final amplitude = waveform.isNotEmpty ? waveform.last : 0.0;
-                    return Column(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        // V2 TRANSMODAL ORB
-                        // Handles its own animations (Ripples + Progress Ring)
-                        BioluminescentOrb(
-                          isRecording: _isRecordingAudio,
-                          durationSeconds: recordingDuration,
-                          amplitude: amplitude,
-                          onTap: () {
-                            if (_isRecordingAudio) {
-                              _stopAudioOnlyRecording();
-                            } else {
-                              _startAudioOnlyRecording();
-                            }
-                          },
-                        ),
-                        
-                        const SizedBox(height: 16),
-                        
-                        // Duration display when recording
-                        // Duration display moved INSIDE the Orb (V2 Design)
-                        const SizedBox(height: 16),
-                      ],
-                    );
-                  },
-                ),
-              ),
-            ],
-          ),
-        ),
-      ],
-    );
-  }
+
   
   /// Format duration as MM:SS
   String _formatDuration(int seconds) {
@@ -3808,81 +3363,17 @@ IconData _getFlashIcon(FlashMode mode) {
     return '$mins:$secs';
   }
   
-  /// Build bottom action bar for audio mode
-  Widget _buildAudioModeActionBar() {
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 60),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-        children: [
-          // Retry / Re-record button
-          GestureDetector(
-            onTap: () {
-              HapticFeedback.lightImpact();
-              if (_isRecordingAudio) {
-                // Cancel current recording
-                ref.read(recordingStateProvider.notifier).stopRecording();
-                setState(() => _isRecordingAudio = false);
-              }
-              // Clear any recorded audio
-              setState(() => _recordedAudioFile = null);
-            },
-            child: Container(
-              width: 52,
-              height: 52,
-              decoration: BoxDecoration(
-                shape: BoxShape.circle,
-                color: Colors.white.withOpacity(0.15),
-                border: Border.all(color: Colors.white.withOpacity(0.2)),
-              ),
-              child: PhosphorIcon(
-                PhosphorIcons.arrowsClockwise(PhosphorIconsStyle.bold),
-                color: Colors.white.withOpacity(0.8),
-                size: 24,
-              ),
-            ),
-          ),
-          
-          const SizedBox(width: 40),
-          
-          // Delete button
-          GestureDetector(
-            onTap: () {
-              HapticFeedback.mediumImpact();
-              if (_isRecordingAudio) {
-                ref.read(recordingStateProvider.notifier).stopRecording();
-              }
-              setState(() {
-                _isRecordingAudio = false;
-                _recordedAudioFile = null;
-                _isAudioOnlyMode = false; // Exit audio mode
-              });
-            },
-            child: Container(
-              width: 52,
-              height: 52,
-              decoration: BoxDecoration(
-                shape: BoxShape.circle,
-                color: AppColors.error.withOpacity(0.2),
-                border: Border.all(color: AppColors.error.withOpacity(0.3)),
-              ),
-              child: PhosphorIcon(
-                PhosphorIcons.trash(PhosphorIconsStyle.regular),
-                color: AppColors.error.withOpacity(0.9),
-                size: 24,
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
+
   
 
 
   Widget _buildCapturedBottomControls() {
+    // Define loading state locally for clarity
+    final isSending = _isMainSendLoading || _showMainSendCheckmark;
+
     // AUDIO MODE: Show Cancel + Mic recording UI
     if (_currentEditMode == EditMode.audio) {
+      if (isSending) return const SizedBox.shrink(); // Hide entirely when sending
       return Padding(
         padding: const EdgeInsets.symmetric(horizontal: 32),
         child: Row(
@@ -3897,36 +3388,17 @@ IconData _getFlashIcon(FlashMode mode) {
               },
             ),
             
-            // CENTER: Large Mic Button (tap to start/stop recording)
-            GestureDetector(
+            // CENTER: Pulsing Mic Button (tap to start/stop recording)
+            // ANIMATION: Subtle breathing effect when recording (Option 1)
+            PulsingMicButton(
+              isRecording: _isRecordingAudio,
               onTap: () {
-                // Tap-to-toggle recording
                 if (_isRecordingAudio) {
-                  _stopVoiceRecording();
+                  _stopRecording();
                 } else {
-                  _startVoiceRecording();
+                  _startRecording();
                 }
               },
-              child: AnimatedContainer(
-                duration: const Duration(milliseconds: 200),
-                width: _isRecordingAudio ? 88 : 80,
-                height: _isRecordingAudio ? 88 : 80,
-                decoration: BoxDecoration(
-                  shape: BoxShape.circle,
-                  color: _isRecordingAudio ? AppColors.error : Colors.grey.shade700,
-                  border: Border.all(
-                    color: _isRecordingAudio ? AppColors.error : Colors.grey.shade500,
-                    width: 3,
-                  ),
-                  // NO VISUAL NOISE: Removed glow/shadow from Audio Mic button
-                  boxShadow: null,
-                ),
-                child: PhosphorIcon(
-                  _isRecordingAudio ? PhosphorIcons.stop(PhosphorIconsStyle.fill) : PhosphorIcons.microphone(PhosphorIconsStyle.fill),
-                  color: Colors.white,
-                  size: 32,
-                ),
-              ),
             ),
             
             // RIGHT: Show recorded indicator or empty space
@@ -3943,19 +3415,29 @@ IconData _getFlashIcon(FlashMode mode) {
     }
     
     // NORMAL MODE: Retake, Send, Save
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 32),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-        children: [
+    // 🛑 FIX: Match camera mode layout (center + fixed gaps) for muscle memory
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.center,
+      children: [
+        // LEFT: RETAKE (Hide when sending, but maintain space)
+        if (!isSending)
           CircleActionButton(
             icon: PhosphorIcons.arrowsClockwise(PhosphorIconsStyle.bold),
             label: 'Retake',
             onTap: _discardCapture,
-          ),
-          _buildSendButton(),
-          // Save button: Hide for audio-only mode (galleries don't support audio files)
-          // Show for Photo, Video, and Photo+Audio
+          )
+        else
+          const SizedBox(width: 52), // Maintain spacing
+
+        const SizedBox(width: 48), // Fixed gap (matches camera mode)
+
+        // CENTER: SEND (Always visible, handles its own loading state)
+        _buildSendButton(),
+
+        const SizedBox(width: 48), // Fixed gap (matches camera mode)
+
+        // RIGHT: SAVE (Hide when sending, but maintain space)
+        if (!isSending)
           if (!_isAudioOnlyMode || _capturedImage != null || _capturedVideo != null)
             CircleActionButton(
               icon: PhosphorIcons.downloadSimple(PhosphorIconsStyle.bold),
@@ -3963,9 +3445,10 @@ IconData _getFlashIcon(FlashMode mode) {
               onTap: _saveToGallery,
             )
           else
-            const SizedBox(width: 52), // Placeholder to maintain layout
-        ],
-      ),
+            const SizedBox(width: 52) // Placeholder to maintain layout
+        else
+          const SizedBox(width: 52), // Maintain spacing
+      ],
     );
   }
   
@@ -3973,9 +3456,12 @@ IconData _getFlashIcon(FlashMode mode) {
   
   /// Save captured media to device gallery
   /// 
-  /// Delegates to ViralVideoService.saveToGallery() which handles:
-  /// - Photo: Saves directly as image
-  /// - Video: Saves directly as video
+  /// 🛑 FIX: Now correctly composites overlays (stickers, text, drawings)
+  /// before saving, matching the Send flow behavior.
+  /// 
+  /// Handles:
+  /// - Photo + Overlays: Composites first, then saves
+  /// - Video + Overlays: Burns overlays into pixels via FFmpeg, then saves
   /// - Photo + Audio: Merges to MP4 (1:1 raw format) then saves
   /// - Audio-only: Button is hidden (unsupported by galleries)
   Future<void> _saveToGallery() async {
@@ -3984,7 +3470,7 @@ IconData _getFlashIcon(FlashMode mode) {
     HapticFeedback.mediumImpact();
     
     try {
-      // Show loading indicator
+      // Show loading indicator (processing may take time)
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
           content: Row(
@@ -3994,24 +3480,59 @@ IconData _getFlashIcon(FlashMode mode) {
                 height: 20,
                 child: CircularProgressIndicator(
                   strokeWidth: 2,
-                  valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                  valueColor: AlwaysStoppedAnimation<Color>(AppColors.textPrimary),
                 ),
               ),
               SizedBox(width: 12),
-              Text('Saving to gallery...'),
+              Text('Processing overlays & saving...'),
             ],
           ),
-          duration: Duration(seconds: 10),
+          duration: Duration(seconds: 30), // Longer for video processing
           backgroundColor: Colors.black87,
         ),
       );
       
-      // Use ViralVideoService as single source of truth for all media operations
+      // 🛑 FIX: Composite overlays BEFORE saving (matching Send flow)
+      File? imageToSave;
+      File? videoToSave;
+      
+      // Check if we have any overlays to burn in
+      final hasOverlays = _stickersNotifier.value.isNotEmpty || 
+                          _textOverlaysNotifier.value.isNotEmpty || 
+                          _drawingStrokes.isNotEmpty;
+      
+      if (_capturedVideo != null) {
+        // VIDEO: Need to burn overlays into pixels via FFmpeg
+        if (hasOverlays) {
+          debugPrint('🎬 [Save] Compositing video with overlays...');
+          videoToSave = await _compositeVideoWithOverlays();
+          if (videoToSave == null) {
+            debugPrint('⚠️ [Save] Video composite failed, falling back to raw');
+            videoToSave = _capturedVideo;
+          }
+        } else {
+          videoToSave = _capturedVideo;
+        }
+      } else if (_capturedImage != null) {
+        // PHOTO: Composite overlays onto image
+        if (hasOverlays) {
+          debugPrint('📸 [Save] Compositing image with overlays...');
+          imageToSave = await _compositeImageWithOverlays();
+          if (imageToSave == null) {
+            debugPrint('⚠️ [Save] Image composite failed, falling back to raw');
+            imageToSave = _capturedImage;
+          }
+        } else {
+          imageToSave = _capturedImage;
+        }
+      }
+      
+      // Use ViralVideoService as single source of truth for saving
       final mediaService = ref.read(viralVideoServiceProvider);
       
       final success = await mediaService.saveToGallery(
-        imageFile: _capturedImage,
-        videoFile: _capturedVideo,
+        imageFile: imageToSave,
+        videoFile: videoToSave,
         audioFile: _recordedAudioFile,
         albumName: 'Vibe',
       );
@@ -4026,7 +3547,7 @@ IconData _getFlashIcon(FlashMode mode) {
             SnackBar(
               content: Row(
                 children: [
-                  Icon(Icons.check_circle, color: Colors.greenAccent, size: 20),
+                  Icon(AppIcons.checkCircle, color: Colors.greenAccent, size: 20),
                   const SizedBox(width: 12),
                   const Text('Saved to Gallery! 📸'),
                 ],
@@ -4052,73 +3573,15 @@ IconData _getFlashIcon(FlashMode mode) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text('Failed to save: $e'),
-            backgroundColor: Colors.redAccent,
+            backgroundColor: AppColors.error,
           ),
         );
       }
     }
   }
 
-  // ============ AUDIO RECORDING METHODS ============
-  
-  void _startVoiceRecording() async {
-    HapticFeedback.heavyImpact();
-    setState(() => _isRecordingAudio = true);
-    
-    // FIX: Stop any active audio playback before starting voice recording
-    ref.read(audioServiceProvider).stop();
-    
-    final success = await ref.read(recordingStateProvider.notifier).startRecording();
-    if (!success && mounted) {
-      setState(() {
-        _isRecordingAudio = false;
-        _isMicPermissionGranted = false;
-      });
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Microphone permission required'),
-          backgroundColor: Colors.orange,
-        ),
-      );
-    }
-  }
-  
-  void _stopVoiceRecording() async {
-    HapticFeedback.mediumImpact();
-    final path = await ref.read(recordingStateProvider.notifier).stopRecording();
-    
-    if (path != null && mounted) {
-      // Get recorded duration from timer
-      // If timer shows 0 but we have a file, minimum is 1 second
-      final timerDuration = ref.read(recordingDurationProvider);
-      
-      // This prevents the fallback to 5 seconds which causes progress bar desync
-      final actualDuration = timerDuration > 0 ? timerDuration : 1;
-      
-      setState(() {
-        _recordedAudioFile = File(path);
-        _audioDuration = actualDuration;
-        _isRecordingAudio = false;
-        _currentEditMode = EditMode.none; // Auto-exit audio mode
-      });
-      
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Row(
-            children: [
-              PhosphorIcon(PhosphorIcons.microphone(PhosphorIconsStyle.fill), color: Colors.white, size: 18),
-              const SizedBox(width: 8),
-              Text('Voice note added ($_audioDuration s)'),
-            ],
-          ),
-          backgroundColor: Colors.green.shade700,
-          duration: const Duration(seconds: 2),
-        ),
-      );
-    } else {
-      setState(() => _isRecordingAudio = false);
-    }
-  }
+  // UNIFIED: _startVoiceRecording and _stopVoiceRecording merged into
+  // _startRecording() and _stopRecording() above (line ~3181).
   
   Widget _buildCaptureButton() {
     return Listener(
@@ -4153,15 +3616,7 @@ IconData _getFlashIcon(FlashMode mode) {
                       // NO VISUAL NOISE: Removed glow/shadow from Inner Shutter
                       boxShadow: null,
                     ),
-                    child: _isRecordingVideo ? null : Center(
-                      child: Column(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          Text('HOLD', style: TextStyle(color: Colors.black, fontSize: 9, fontWeight: FontWeight.w900, letterSpacing: 0.5)),
-                          Text('TO REC', style: TextStyle(color: Colors.black, fontSize: 9, fontWeight: FontWeight.w900, letterSpacing: 0.5)),
-                        ],
-                      ),
-                    ),
+                    child: null, // Clean shutter — gesture is discoverable via tap/hold behavior
                   ),
                 ),
             ),
@@ -4270,9 +3725,9 @@ void _handlePointerUp(PointerUpEvent event) {
     return GestureDetector(
       onTap: () {
         if (_isRecordingAudio) {
-          _stopAudioOnlyRecording();
+          _stopRecording();
         } else {
-          _startAudioOnlyRecording();
+          _startRecording();
         }
       },
       child: AnimatedBuilder(
@@ -4328,7 +3783,7 @@ void _handlePointerUp(PointerUpEvent event) {
       onTap: _sendVibe,
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 300),
-        width: 72, height: 72,
+        width: 84, height: 84,
         decoration: BoxDecoration(
           shape: BoxShape.circle,
           // Green for success/loading, standard for idle
@@ -4343,7 +3798,7 @@ void _handlePointerUp(PointerUpEvent event) {
                   child: CircularProgressIndicator(color: Colors.black, strokeWidth: 3),
                 )
               : _showMainSendCheckmark
-                  ? const Icon(Icons.check, color: Colors.black, size: 32)
+                  ? Icon(AppIcons.check, color: Colors.black, size: 32)
                   : PhosphorIcon(PhosphorIcons.paperPlaneRight(PhosphorIconsStyle.fill), color: Colors.black, size: 28),
         ),
       ),
@@ -4436,6 +3891,3 @@ void _handlePointerUp(PointerUpEvent event) {
   }
 
 }
-
-/// Smart Send Sheet Widget (Material Design 3 / Snapchat pattern)
-

@@ -12,14 +12,18 @@ import 'package:video_player/video_player.dart';
 import 'package:audioplayers/audioplayers.dart'; // For PlayerState enum
 import 'package:path_provider/path_provider.dart';
 import 'package:nock/core/constants/app_routes.dart';
-import 'package:nock/core/services/vibe_service.dart';
 import 'package:nock/core/services/audio_service.dart';
-import 'package:nock/core/services/auth_service.dart';
 import 'package:nock/core/theme/app_colors.dart';
-import 'package:nock/shared/widgets/aura_visualization.dart';
-import 'package:nock/features/squad/presentation/squad_screen.dart';  // for friendsProvider
+import 'package:phosphor_flutter/phosphor_flutter.dart';
+import 'package:nock/features/camera/presentation/widgets/bioluminescent_orb.dart';
+import 'package:nock/features/squad/presentation/squad_screen.dart'; // for friendsProvider
 import 'package:nock/core/theme/app_typography.dart';
+import 'package:nock/core/theme/app_icons.dart';
+import 'package:nock/core/theme/app_dimens.dart';
+import 'package:nock/shared/widgets/app_icon.dart'; // New import
+import 'package:nock/features/camera/presentation/widgets/camera_buttons.dart'; // For CameraGlassButton
 import 'package:nock/core/providers/vibe_upload_provider.dart';
+import 'package:nock/core/utils/app_modal.dart';
 
 /// Preview Screen - Review photo/video + audio before sending
 class PreviewScreen extends ConsumerStatefulWidget {
@@ -27,8 +31,8 @@ class PreviewScreen extends ConsumerStatefulWidget {
   final String audioPath;
   final String? videoPath;
   final bool isVideo;
-  final bool isAudioOnly;  // Audio-only mode with blurred profile background
-  final String? senderAvatarUrl;  // For audio-only blurred background
+  final bool isAudioOnly; // Audio-only mode with blurred profile background
+  final String? senderAvatarUrl; // For audio-only blurred background
   final bool isFromGallery;
   final DateTime? originalPhotoDate;
   final int? audioDuration; // Actual audio/video duration in seconds
@@ -50,14 +54,15 @@ class PreviewScreen extends ConsumerStatefulWidget {
   ConsumerState<PreviewScreen> createState() => _PreviewScreenState();
 }
 
-class _PreviewScreenState extends ConsumerState<PreviewScreen> with WidgetsBindingObserver {
-  bool _isSending = false;
+class _PreviewScreenState extends ConsumerState<PreviewScreen>
+    with WidgetsBindingObserver {
+  final bool _isSending = false;
   VideoPlayerController? _videoController;
   bool _isVideoInitialized = false;
-  
+
   // Key for capturing audio-only background as image
   final GlobalKey _backgroundKey = GlobalKey();
-  
+
   // Audio playback state for Aura visualization
   bool _isAudioPlaying = false;
 
@@ -65,18 +70,19 @@ class _PreviewScreenState extends ConsumerState<PreviewScreen> with WidgetsBindi
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
-    
+
     // FIX: Stop any "zombie" audio from previous screens immediately
     ref.read(audioServiceProvider).stop();
-    
+
     if (widget.isVideo && widget.videoPath != null) {
       _initializeVideoPlayer();
     }
-    
+
     // Listen to audio playback state for Aura visualization
-    if (widget.isAudioOnly || (!widget.isVideo && widget.audioPath.isNotEmpty)) {
+    if (widget.isAudioOnly ||
+        (!widget.isVideo && widget.audioPath.isNotEmpty)) {
       _setupAudioStateListener();
-      
+
       // FIX #7: Auto-play audio for photo+audio mode (consistent with video auto-play)
       // Delay slightly to let the UI settle
       Future.delayed(const Duration(milliseconds: 500), () {
@@ -86,7 +92,7 @@ class _PreviewScreenState extends ConsumerState<PreviewScreen> with WidgetsBindi
       });
     }
   }
-  
+
   void _setupAudioStateListener() {
     final audioService = ref.read(audioServiceProvider);
     audioService.stateStream.listen((state) {
@@ -100,45 +106,46 @@ class _PreviewScreenState extends ConsumerState<PreviewScreen> with WidgetsBindi
 
   Future<void> _initializeVideoPlayer() async {
     final controller = VideoPlayerController.file(File(widget.videoPath!));
-    
+
     // Release old controller if it exists to prevent leaks
     final oldController = _videoController;
     if (oldController != null) {
       await oldController.dispose();
     }
-    
+
     // Assign early so dispose() can clean it up if user exits NOW
     _videoController = controller;
 
-  try {
-    await controller.initialize();
-    
-    // CRITICAL RACE FIX:
-    if (!mounted) {
-      // No need to dispose here as dispose() method already handled _videoController
-      // effectively (or will when it runs, if it hasn't already).
-      // Actually, if dispose() ran, _videoController might be null or disposed.
-      return; 
-    }
-    
-    // Safety check: ensure the controller we just inited is still the active one
-    // and hasn't been disposed/replaced by another call.
-    if (_videoController != controller) return;
+    try {
+      await controller.initialize();
 
-    await controller.setLooping(true);
-    await controller.play();
-    
-    if (mounted) {
-      setState(() => _isVideoInitialized = true);
+      // CRITICAL RACE FIX:
+      if (!mounted) {
+        // No need to dispose here as dispose() method already handled _videoController
+        // effectively (or will when it runs, if it hasn't already).
+        // Actually, if dispose() ran, _videoController might be null or disposed.
+        return;
+      }
+
+      // Safety check: ensure the controller we just inited is still the active one
+      // and hasn't been disposed/replaced by another call.
+      if (_videoController != controller) return;
+
+      await controller.setLooping(true);
+      await controller.play();
+
+      if (mounted) {
+        setState(() => _isVideoInitialized = true);
+      }
+    } catch (e) {
+      debugPrint('Error initializing video: $e');
     }
-  } catch (e) {
-    debugPrint('Error initializing video: $e');
   }
-}
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
-    if (state == AppLifecycleState.paused || state == AppLifecycleState.inactive) {
+    if (state == AppLifecycleState.paused ||
+        state == AppLifecycleState.inactive) {
       // FIX: Stop audio and pause video when app goes to background
       ref.read(audioServiceProvider).stop();
       if (_videoController != null && _videoController!.value.isPlaying) {
@@ -175,51 +182,28 @@ class _PreviewScreenState extends ConsumerState<PreviewScreen> with WidgetsBindi
           // Top bar
           SafeArea(
             child: Padding(
-              padding: const EdgeInsets.all(16),
+              padding: const EdgeInsets.all(AppDimens.p16),
               child: Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  IconButton(
+                  CameraGlassButton(
+                    icon: AppIcons.close,
                     onPressed: () => context.pop(),
-                    icon: const Icon(Icons.close, color: Colors.white),
                   ),
                   Row(
                     children: [
-                      if (widget.isVideo)
+                      if (widget.isFromGallery &&
+                          widget.originalPhotoDate != null) ...[
                         Container(
                           padding: const EdgeInsets.symmetric(
                             horizontal: 12,
                             vertical: 6,
                           ),
                           decoration: BoxDecoration(
-                            color: AppColors.secondaryAction.withOpacity(0.8),
-                            borderRadius: BorderRadius.circular(8),
+                            color: AppColors.shadow,
+                            borderRadius: BorderRadius.circular(AppDimens.r8),
                           ),
-                          child: Row(
-                            children: [
-                              Icon(Icons.videocam, color: Colors.white, size: 16),
-                              SizedBox(width: 4),
-                              Text(
-                                'VIDEO',
-                                style: AppTypography.labelSmall.copyWith(
-                                  fontWeight: FontWeight.bold,
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                      if (widget.isFromGallery && widget.originalPhotoDate != null) ...[
-                        const SizedBox(width: 8),
-                        Container(
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 12,
-                            vertical: 6,
-                          ),
-                          decoration: BoxDecoration(
-                            color: Colors.black54,
-                            borderRadius: BorderRadius.circular(8),
-                          ),
-                            child: Text(
+                          child: Text(
                             '📅 ${_formatDate(widget.originalPhotoDate!)}',
                             style: AppTypography.labelSmall.copyWith(
                               color: AppColors.vibeAccent,
@@ -256,15 +240,15 @@ class _PreviewScreenState extends ConsumerState<PreviewScreen> with WidgetsBindi
                     width: 64,
                     height: 64,
                     decoration: BoxDecoration(
-                      color: Colors.black.withOpacity(0.5),
+                      color: AppColors.shadow,
                       shape: BoxShape.circle,
                     ),
-                    child: Icon(
+                    child: AppIcon(
                       _videoController!.value.isPlaying
-                          ? Icons.pause
-                          : Icons.play_arrow,
-                      color: Colors.white,
-                      size: 32,
+                          ? AppIcons.pause
+                          : AppIcons.play,
+                      color: AppColors.textPrimary,
+                      size: AppDimens.iconL,
                     ),
                   ),
                 ),
@@ -278,19 +262,16 @@ class _PreviewScreenState extends ConsumerState<PreviewScreen> with WidgetsBindi
             right: 0,
             child: Container(
               padding: EdgeInsets.only(
-                left: 24,
-                right: 24,
-                bottom: MediaQuery.of(context).padding.bottom + 24,
-                top: 24,
+                left: AppDimens.p24,
+                right: AppDimens.p24,
+                bottom: MediaQuery.of(context).padding.bottom + AppDimens.p24,
+                top: AppDimens.p24,
               ),
               decoration: BoxDecoration(
                 gradient: LinearGradient(
                   begin: Alignment.topCenter,
                   end: Alignment.bottomCenter,
-                  colors: [
-                    Colors.transparent,
-                    Colors.black.withOpacity(0.9),
-                  ],
+                  colors: [AppColors.transparent, AppColors.surfaceGlassHigh],
                 ),
               ),
               child: Column(
@@ -298,32 +279,37 @@ class _PreviewScreenState extends ConsumerState<PreviewScreen> with WidgetsBindi
                   // Audio preview indicator (only for photo mode)
                   if (!widget.isVideo && widget.audioPath.isNotEmpty)
                     Container(
-                      padding: const EdgeInsets.all(12),
+                      padding: const EdgeInsets.all(AppDimens.p12),
                       decoration: BoxDecoration(
-                        color: Colors.white.withOpacity(0.1),
-                        borderRadius: BorderRadius.circular(12),
+                        color: AppColors
+                            .surfaceGlassMedium, // Changed from AppColors.textPrimary.withOpacity(0.1)
+                        borderRadius: BorderRadius.circular(AppDimens.r12),
                       ),
                       child: Row(
                         children: [
-                          const Icon(
-                            Icons.mic,
-                            color: AppColors.error, // âœ¨ Thermal Orange (Voice/Record standard)
+                          AppIcon(
+                            // Changed from Icon
+                            AppIcons.mic,
+                            color: AppColors
+                                .error, // ✨ Thermal Orange (Voice/Record standard)
                           ),
-                          const SizedBox(width: 12),
-                          const Expanded(
+                          const SizedBox(width: AppDimens.p12),
+                          Expanded(
                             child: Text(
                               'Voice note attached',
-                              style: TextStyle(color: Colors.white),
+                              style: AppTypography.bodyMedium.copyWith(
+                                color: AppColors.textPrimary,
+                              ),
                             ),
                           ),
                           IconButton(
                             onPressed: () {
-                              ref.read(audioServiceProvider).playFromFile(
-                                widget.audioPath,
-                              );
+                              ref
+                                  .read(audioServiceProvider)
+                                  .playFromFile(widget.audioPath);
                             },
-                            icon: const Icon(
-                              Icons.play_arrow,
+                            icon: Icon(
+                              AppIcons.play,
                               color: AppColors.primaryAction,
                             ),
                           ),
@@ -334,52 +320,65 @@ class _PreviewScreenState extends ConsumerState<PreviewScreen> with WidgetsBindi
                   // Video info (for video mode)
                   if (widget.isVideo && _videoController != null)
                     Container(
-                      padding: const EdgeInsets.all(12),
+                      padding: const EdgeInsets.all(AppDimens.p12),
                       decoration: BoxDecoration(
-                        color: Colors.white.withOpacity(0.1),
-                        borderRadius: BorderRadius.circular(12),
+                        color: AppColors.textPrimary.withOpacity(0.1),
+                        borderRadius: BorderRadius.circular(AppDimens.r12),
                       ),
                       child: Row(
                         children: [
-                          const Icon(
-                            Icons.videocam,
+                          Icon(
+                            AppIcons.video,
                             color: AppColors.secondaryAction,
                           ),
                           const SizedBox(width: 12),
                           Expanded(
                             child: Text(
                               'Video with audio ${_isVideoInitialized ? "(${_formatDuration(_videoController!.value.duration)})" : ""}',
-                              style: const TextStyle(color: Colors.white),
+                              style: AppTypography.bodyMedium.copyWith(
+                                color: AppColors.textPrimary,
+                              ),
                             ),
                           ),
                         ],
                       ),
                     ),
 
-                  const SizedBox(height: 24),
+                  const SizedBox(height: AppDimens.p24),
 
-                  // Send button
-                  SizedBox(
-                    width: double.infinity,
-                    child: ElevatedButton.icon(
-                      onPressed: _isSending ? null : _sendVibe,
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: AppColors.primaryAction,
-                        padding: const EdgeInsets.symmetric(vertical: 16),
-                      ),
-                      icon: _isSending
-                          ? const SizedBox(
-                              width: 20,
-                              height: 20,
-                              child: CircularProgressIndicator(
-                                strokeWidth: 2,
-                                color: Colors.black,
-                              ),
-                            )
-                          : const Icon(Icons.send, color: Colors.black),
-                      label: Text(
-                        _isSending ? 'Sending...' : 'Send Vibe',
-                        style: AppTypography.buttonText.copyWith(color: Colors.black),
+                  // Send button (Matching Camera Screen Hierarchy)
+                  Align(
+                    alignment: Alignment.centerRight,
+                    child: GestureDetector(
+                      onTap: _isSending ? null : _sendVibe,
+                      child: AnimatedContainer(
+                        duration: const Duration(milliseconds: 300),
+                        width: 84,
+                        height: 84,
+                        decoration: BoxDecoration(
+                          shape: BoxShape.circle,
+                          color: _isSending 
+                              ? AppColors.primaryAction.withAlpha(128) 
+                              : AppColors.primaryAction,
+                        ),
+                        child: Center(
+                          child: _isSending
+                              ? const SizedBox(
+                                  width: 32,
+                                  height: 32,
+                                  child: CircularProgressIndicator(
+                                    color: Colors.black,
+                                    strokeWidth: 3,
+                                  ),
+                                )
+                              : PhosphorIcon(
+                                  PhosphorIcons.paperPlaneRight(
+                                    PhosphorIconsStyle.fill,
+                                  ),
+                                  color: Colors.black,
+                                  size: 32,
+                                ),
+                        ),
                       ),
                     ),
                   ),
@@ -407,24 +406,21 @@ class _PreviewScreenState extends ConsumerState<PreviewScreen> with WidgetsBindi
         ),
       );
     }
-    
+
     // Video mode
     if (widget.isVideo && widget.videoPath != null) {
       return _buildVideoPlayer();
     }
-    
+
     // Photo mode (default)
     if (widget.imagePath.isNotEmpty && File(widget.imagePath).existsSync()) {
-      return Image.file(
-        File(widget.imagePath),
-        fit: BoxFit.cover,
-      );
+      return Image.file(File(widget.imagePath), fit: BoxFit.cover);
     }
-    
+
     // Fallback: gradient background
     return _buildAudioOnlyBackground();
   }
-  
+
   /// Build beautiful background for audio-only vibes
   /// Uses blurred profile picture if available, otherwise animated gradient
   Widget _buildAudioOnlyBackground() {
@@ -432,7 +428,8 @@ class _PreviewScreenState extends ConsumerState<PreviewScreen> with WidgetsBindi
       fit: StackFit.expand,
       children: [
         // Layer 1: Profile image or gradient base
-        if (widget.senderAvatarUrl != null && widget.senderAvatarUrl!.isNotEmpty)
+        if (widget.senderAvatarUrl != null &&
+            widget.senderAvatarUrl!.isNotEmpty)
           Image.network(
             widget.senderAvatarUrl!,
             fit: BoxFit.cover,
@@ -440,13 +437,13 @@ class _PreviewScreenState extends ConsumerState<PreviewScreen> with WidgetsBindi
           )
         else
           _buildGradientFallback(),
-        
+
         // Layer 2: Heavy blur effect
         BackdropFilter(
           filter: ui.ImageFilter.blur(sigmaX: 40, sigmaY: 40),
-          child: Container(color: Colors.transparent),
+          child: Container(color: AppColors.transparent),
         ),
-        
+
         // Layer 3: Dark overlay for contrast
         Container(
           decoration: BoxDecoration(
@@ -454,88 +451,65 @@ class _PreviewScreenState extends ConsumerState<PreviewScreen> with WidgetsBindi
               begin: Alignment.topCenter,
               end: Alignment.bottomCenter,
               colors: [
-                Colors.black.withOpacity(0.3),
-                Colors.black.withOpacity(0.5),
-                Colors.black.withOpacity(0.7),
+                AppColors.background.withOpacity(0.3),
+                AppColors.background.withOpacity(0.5),
+                AppColors.background.withOpacity(0.7),
               ],
             ),
           ),
         ),
-        
-        // Layer 4: Animated Aura visualization
-        // Connected to actual audio playback state
-        Positioned.fill(
-          child: Opacity(
-            opacity: 0.4,
-            child: AuraVisualization(isPlaying: _isAudioPlaying),
-          ),
-        ),
-        
-        // Layer 5: Audio mode indicator in center
-        // FIX: Removed redundant static mic icon - AuraVisualization IS the indicator
-        // Keeping just the text labels for context
+
+        // Layer 4: BioluminescentOrb — UNIFIED with camera capture screen
+        // Uses the same orb widget for visual continuity between record & preview
         Center(
-          child: SingleChildScrollView(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                // Animated play button that pulses with audio
-                GestureDetector(
-                  onTap: () {
-                    if (_isAudioPlaying) {
-                      ref.read(audioServiceProvider).stop();
-                    } else {
-                      ref.read(audioServiceProvider).playFromFile(widget.audioPath);
-                    }
-                  },
-                  child: Container(
-                    width: 80,
-                    height: 80,
-                    decoration: BoxDecoration(
-                      shape: BoxShape.circle,
-                      gradient: LinearGradient(
-                        colors: [
-                          AppColors.primaryAction.withOpacity(0.3),
-                          AppColors.primaryAction.withOpacity(0.1),
-                        ],
-                      ),
-                      border: Border.all(
-                        color: AppColors.primaryAction.withOpacity(0.5),
-                        width: 2,
-                      ),
-                    ),
-                    child: Icon(
-                      _isAudioPlaying ? Icons.pause : Icons.play_arrow,
-                      size: 42,
-                      color: Colors.white,
-                    ),
-                  ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              BioluminescentOrb(
+                isRecording: _isAudioPlaying, // Drives ripple animation
+                durationSeconds: widget.audioDuration ?? 0,
+                showProgressRing: false, // No progress ring in preview
+                centerOverride: AppIcon(
+                  _isAudioPlaying
+                      ? PhosphorIcons.pause(PhosphorIconsStyle.fill)
+                      : PhosphorIcons.play(PhosphorIconsStyle.fill),
+                  size: 56,
+                  color: AppColors.textPrimary,
                 ),
-                const SizedBox(height: 16),
-                Text(
-                  'Audio Vibe',
-                  style: TextStyle(
-                    color: Colors.white.withOpacity(0.9),
-                    fontSize: 18,
-                    fontWeight: FontWeight.bold,
-                  ),
+                onTap: () {
+                  if (_isAudioPlaying) {
+                    ref.read(audioServiceProvider).stop();
+                  } else {
+                    ref
+                        .read(audioServiceProvider)
+                        .playFromFile(widget.audioPath);
+                  }
+                },
+              ),
+              const SizedBox(height: AppDimens.p16),
+              Text(
+                'Audio Vibe',
+                style: AppTypography.headlineSmall.copyWith(
+                  color: AppColors.textPrimary.withOpacity(0.9),
+                  fontSize: 18,
+                  fontWeight: FontWeight.bold,
                 ),
-                const SizedBox(height: 4),
-                Text(
-                  '${widget.audioDuration ?? 0}s',
-                  style: TextStyle(
-                    color: Colors.white.withOpacity(0.6),
-                    fontSize: 14,
-                  ),
+              ),
+              const SizedBox(height: AppDimens.p4),
+              Text(
+                '${widget.audioDuration ?? 0}s',
+                style: AppTypography.labelSmall.copyWith(
+                  color: AppColors.textPrimary.withOpacity(0.6),
+                  fontSize: 14,
                 ),
-              ],
-            ),
+              ),
+            ],
           ),
         ),
       ],
     );
   }
-  
+
   /// Gradient fallback when no profile picture available
   Widget _buildGradientFallback() {
     return Container(
@@ -543,62 +517,63 @@ class _PreviewScreenState extends ConsumerState<PreviewScreen> with WidgetsBindi
         gradient: LinearGradient(
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
-          colors: [
-            AppColors.voidNavy,
-            AppColors.surface,
-          ],
+          colors: [AppColors.voidNavy, AppColors.surface],
         ),
       ),
     );
   }
-  
+
   /// Capture the background as an image file for widget compatibility
-  /// 
+  ///
   /// SAFETY FIX: Implements dynamic downscaling to prevent GPU Texture OOM crashes.
   /// Standard mobile GPUs have a Max Texture Size limit (often 4096px or 8192px).
   /// Capturing at full device pixel ratio on a large tablet can exceed this limit.
   Future<File?> _captureBackgroundAsImage() async {
     try {
-      final boundary = _backgroundKey.currentContext?.findRenderObject() as RenderRepaintBoundary?;
+      final boundary =
+          _backgroundKey.currentContext?.findRenderObject()
+              as RenderRepaintBoundary?;
       if (boundary == null) return null;
-      
+
       // 1. Calculate a safe pixel ratio
       // logicalSize * pixelRatio = physicalPixels
       final ui.Size logicalSize = boundary.size;
-      
+
       // CRITICAL OOM FIX: Lowered from 2048px to 1080px (Final Safety Adjustment).
       // 2048x2048px = 16MB (Safe-ish).
       // 1080x1920px = 8MB (Ideal high-quality limit).
       // 1024x1024px = 4MB (Bulletproof).
-      const double maxSafeDimension = 1080.0; 
-      
+      const double maxSafeDimension = 1080.0;
+
       final double maxSide = math.max(logicalSize.width, logicalSize.height);
-      
+
       // If the widget is already larger than 1080px, the ratio will be < 1.0
       double safePixelRatio = 1.0;
       if (maxSide > maxSafeDimension) {
         safePixelRatio = maxSafeDimension / maxSide;
       }
-      
+
       // 2. Capture the image with the calculated safe ratio
       final image = await boundary.toImage(pixelRatio: safePixelRatio);
-      
+
       // CRITICAL PERFORMANCE FIX: "Extract on Main, Encode on Worker" Pattern
       // 1. Extract raw RGBA bytes on the UI thread (very fast, no encoding).
-      final byteData = await image.toByteData(format: ui.ImageByteFormat.rawRgba);
+      final byteData = await image.toByteData(
+        format: ui.ImageByteFormat.rawRgba,
+      );
       final int width = image.width;
       final int height = image.height;
-      
+
       // CRITICAL: Explicitly dispose the GPU handle immediately as we now have the CPU bytes.
       image.dispose();
-      
+
       if (byteData == null) return null;
 
       // 2. Offload heavy PNG compression to a background isolate using the 'image' package.
       // This avoids the ArgumentError because we are passing raw bytes (Uint8List), not a GPU handle.
       final Uint8List pngBytes = await Isolate.run(() {
         final rawBytes = byteData.buffer.asUint8List();
-        
+
         // Convert raw bytes to an 'image' package object
         final imgImage = img.Image.fromBytes(
           width: width,
@@ -608,15 +583,17 @@ class _PreviewScreenState extends ConsumerState<PreviewScreen> with WidgetsBindi
           format: img.Format.uint8,
           order: img.ChannelOrder.rgba,
         );
-        
+
         // Perform the CPU-intensive PNG encoding
         return img.encodePng(imgImage);
       });
-      
+
       final tempDir = await getTemporaryDirectory();
-      final file = File('${tempDir.path}/audio_vibe_bg_${DateTime.now().millisecondsSinceEpoch}.png');
+      final file = File(
+        '${tempDir.path}/audio_vibe_bg_${DateTime.now().millisecondsSinceEpoch}.png',
+      );
       await file.writeAsBytes(pngBytes);
-      
+
       return file;
     } catch (e) {
       debugPrint('Error capturing background: $e');
@@ -627,11 +604,9 @@ class _PreviewScreenState extends ConsumerState<PreviewScreen> with WidgetsBindi
   Widget _buildVideoPlayer() {
     if (!_isVideoInitialized || _videoController == null) {
       return Container(
-        color: Colors.black,
+        color: AppColors.background,
         child: const Center(
-          child: CircularProgressIndicator(
-            color: Color(0xFF00F0FF),
-          ),
+          child: CircularProgressIndicator(color: AppColors.secondaryAction),
         ),
       );
     }
@@ -678,8 +653,18 @@ class _PreviewScreenState extends ConsumerState<PreviewScreen> with WidgetsBindi
 
   String _formatDate(DateTime date) {
     final months = [
-      'JAN', 'FEB', 'MAR', 'APR', 'MAY', 'JUN',
-      'JUL', 'AUG', 'SEP', 'OCT', 'NOV', 'DEC'
+      'JAN',
+      'FEB',
+      'MAR',
+      'APR',
+      'MAY',
+      'JUN',
+      'JUL',
+      'AUG',
+      'SEP',
+      'OCT',
+      'NOV',
+      'DEC',
     ];
     return '${months[date.month - 1]} ${date.day}';
   }
@@ -689,18 +674,14 @@ class _PreviewScreenState extends ConsumerState<PreviewScreen> with WidgetsBindi
   }
 
   void _showFriendPicker() {
-    showModalBottomSheet(
+    AppModal.show(
       context: context,
-      backgroundColor: const Color(0xFF1A1A1A),
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
-      ),
-      builder: (context) => Consumer(
+      child: Consumer(
         builder: (context, ref, _) {
           final friendsAsync = ref.watch(friendsProvider);
-          
+
           return Container(
-            padding: const EdgeInsets.all(24),
+            padding: const EdgeInsets.all(AppDimens.p24),
             constraints: BoxConstraints(
               maxHeight: MediaQuery.of(context).size.height * 0.6,
             ),
@@ -708,16 +689,16 @@ class _PreviewScreenState extends ConsumerState<PreviewScreen> with WidgetsBindi
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                const Text(
+                Text(
                   'Send to...',
-                  style: TextStyle(
-                    color: Colors.white,
+                  style: AppTypography.headlineSmall.copyWith(
+                    color: AppColors.textPrimary,
                     fontSize: 20,
                     fontWeight: FontWeight.bold,
                   ),
                 ),
-                const SizedBox(height: 16),
-                
+                const SizedBox(height: AppDimens.p16),
+
                 Expanded(
                   child: friendsAsync.when(
                     data: (friends) {
@@ -726,11 +707,17 @@ class _PreviewScreenState extends ConsumerState<PreviewScreen> with WidgetsBindi
                           child: Column(
                             mainAxisSize: MainAxisSize.min,
                             children: [
-                              const Icon(Icons.people_outline, color: Colors.grey, size: 48),
-                              const SizedBox(height: 16),
-                              const Text(
+                              Icon(
+                                AppIcons.friends,
+                                color: AppColors.textSecondary,
+                                size: 48,
+                              ),
+                              const SizedBox(height: AppDimens.p16),
+                              Text(
                                 'No friends yet',
-                                style: TextStyle(color: Colors.white),
+                                style: AppTypography.bodyMedium.copyWith(
+                                  color: AppColors.textPrimary,
+                                ),
                               ),
                               const SizedBox(height: 8),
                               TextButton(
@@ -744,10 +731,11 @@ class _PreviewScreenState extends ConsumerState<PreviewScreen> with WidgetsBindi
                           ),
                         );
                       }
-                      
+
                       return ListView.separated(
                         itemCount: friends.length,
-                        separatorBuilder: (_, __) => const SizedBox(height: 12),
+                        separatorBuilder: (_, __) =>
+                            const SizedBox(height: AppDimens.p12),
                         itemBuilder: (context, index) {
                           final friend = friends[index];
                           return ListTile(
@@ -757,15 +745,15 @@ class _PreviewScreenState extends ConsumerState<PreviewScreen> with WidgetsBindi
                               backgroundImage: friend.avatarUrl != null
                                   ? NetworkImage(friend.avatarUrl!)
                                   : null,
-                              backgroundColor: Colors.grey[800],
+                              backgroundColor: AppColors.surfaceLight,
                               child: friend.avatarUrl == null
                                   ? Text(friend.displayName[0].toUpperCase())
                                   : null,
                             ),
                             title: Text(
                               friend.displayName,
-                              style: const TextStyle(
-                                color: Colors.white,
+                              style: AppTypography.bodyMedium.copyWith(
+                                color: AppColors.textPrimary,
                                 fontWeight: FontWeight.bold,
                               ),
                             ),
@@ -775,7 +763,11 @@ class _PreviewScreenState extends ConsumerState<PreviewScreen> with WidgetsBindi
                                 color: AppColors.primaryAction,
                                 shape: BoxShape.circle,
                               ),
-                              child: const Icon(Icons.send, color: Colors.black, size: 20),
+                              child: Icon(
+                                AppIcons.send,
+                                color: AppColors.textInverse,
+                                size: 20,
+                              ),
                             ),
                             onTap: () => _performSend(friend.id),
                           );
@@ -783,10 +775,17 @@ class _PreviewScreenState extends ConsumerState<PreviewScreen> with WidgetsBindi
                       );
                     },
                     loading: () => const Center(
-                      child: CircularProgressIndicator(color: AppColors.primaryAction),
+                      child: CircularProgressIndicator(
+                        color: AppColors.primaryAction,
+                      ),
                     ),
-                    error: (_, __) => const Center(
-                      child: Text('Error loading friends', style: TextStyle(color: Colors.red)),
+                    error: (_, __) => Center(
+                      child: Text(
+                        'Error loading friends',
+                        style: AppTypography.bodyMedium.copyWith(
+                          color: AppColors.error,
+                        ),
+                      ),
                     ),
                   ),
                 ),
@@ -800,12 +799,12 @@ class _PreviewScreenState extends ConsumerState<PreviewScreen> with WidgetsBindi
 
   Future<void> _performSend(String receiverId) async {
     Navigator.pop(context); // Close picker
-    
+
     if (_isSending) return;
-    
-    // FIX: stop audio immediately when send starts to prevent "Zombie Audio" 
+
+    // FIX: stop audio immediately when send starts to prevent "Zombie Audio"
     ref.read(audioServiceProvider).stop();
-    
+
     // We need to capture the background image BEFORE navigating
     // because after navigation the context is gone
     File? imageFile;
@@ -814,7 +813,9 @@ class _PreviewScreenState extends ConsumerState<PreviewScreen> with WidgetsBindi
       // AUDIO-ONLY: Capture the blurred background as image for widget
       imageFile = await _captureBackgroundAsImage();
       if (imageFile == null) {
-        debugPrint('Warning: Could not capture background, sending without image');
+        debugPrint(
+          'Warning: Could not capture background, sending without image',
+        );
       }
     } else if (!widget.isVideo && widget.imagePath.isNotEmpty) {
       // PHOTO: Use the actual photo
@@ -827,7 +828,7 @@ class _PreviewScreenState extends ConsumerState<PreviewScreen> with WidgetsBindi
       duration = _videoController!.value.duration.inSeconds;
       if (duration <= 0) duration = widget.audioDuration ?? 5;
     }
-    
+
     // Mock waveform for now (should be passed from camera but PreviewScreen doesn't have it yet)
     final waveform = List.generate(20, (_) => 0.5);
 
@@ -835,25 +836,26 @@ class _PreviewScreenState extends ConsumerState<PreviewScreen> with WidgetsBindi
     debugPrint('📤 [PreviewScreen] Triggering background upload');
     // Trigger blocking upload (User Request: Wait until full success)
     debugPrint('📤 [PreviewScreen] Triggering BLOCKING upload');
-    
+
     // 1. Show Blocking Dialog
     showDialog(
       context: context,
       barrierDismissible: false, // Prevent dismissal
-      builder: (context) => PopScope( // Prevent back button
+      builder: (context) => PopScope(
+        // Prevent back button
         canPop: false,
         child: Dialog(
           backgroundColor: Colors.black87,
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(16),
+          ),
           child: Padding(
             padding: const EdgeInsets.all(24),
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
                 const SizedBox(height: 16),
-                const CircularProgressIndicator(
-                  color: AppColors.primaryAction,
-                ),
+                const CircularProgressIndicator(color: AppColors.primaryAction),
                 const SizedBox(height: 24),
                 Text(
                   'Sending Vibe...',
@@ -863,7 +865,9 @@ class _PreviewScreenState extends ConsumerState<PreviewScreen> with WidgetsBindi
                 const SizedBox(height: 8),
                 Text(
                   'Please wait until upload completes',
-                  style: AppTypography.labelSmall.copyWith(color: Colors.white54),
+                  style: AppTypography.labelSmall.copyWith(
+                    color: Colors.white54,
+                  ),
                   textAlign: TextAlign.center,
                 ),
                 const SizedBox(height: 16),
@@ -876,42 +880,38 @@ class _PreviewScreenState extends ConsumerState<PreviewScreen> with WidgetsBindi
 
     try {
       // 2. Await full upload
-      await ref.read(vibeUploadProvider.notifier).addUploadBlocking(
-        receiverId: receiverId,
-        audioPath: widget.audioPath.isNotEmpty ? widget.audioPath : null,
-        audioDuration: duration,
-        waveformData: waveform, // Corrected from waveformData to waveform
-        imagePath: imageFile?.path,
-        videoPath: widget.isVideo && widget.videoPath != null ? widget.videoPath : null,
-        isVideo: widget.isVideo,
-        isAudioOnly: widget.isAudioOnly,
-        isFromGallery: widget.isFromGallery,
-        originalPhotoDate: widget.originalPhotoDate,
-      );
-      
+      await ref
+          .read(vibeUploadProvider.notifier)
+          .addUploadBlocking(
+            receiverId: receiverId,
+            audioPath: widget.audioPath.isNotEmpty ? widget.audioPath : null,
+            audioDuration: duration,
+            waveformData: waveform, // Corrected from waveformData to waveform
+            imagePath: imageFile?.path,
+            videoPath: widget.isVideo && widget.videoPath != null
+                ? widget.videoPath
+                : null,
+            isVideo: widget.isVideo,
+            isAudioOnly: widget.isAudioOnly,
+            isFromGallery: widget.isFromGallery,
+            originalPhotoDate: widget.originalPhotoDate,
+            isSilent: true,
+          );
+
       // 3. Success! Dismiss Dialog + Navigate Home
       if (mounted) {
         Navigator.pop(context); // Dismiss Dialog
-        
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('✅ Vibe sent successfully!'),
-            backgroundColor: Colors.green,
-            duration: Duration(seconds: 2),
-          ),
-        );
-        
         context.go(AppRoutes.home);
       }
     } catch (e) {
       // 4. Error! Dismiss Dialog + Show Error
       if (mounted) {
         Navigator.pop(context); // Dismiss Dialog
-        
+
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text('❌ Send failed: $e'),
-            backgroundColor: Colors.red,
+            backgroundColor: AppColors.error,
             duration: const Duration(seconds: 4),
           ),
         );

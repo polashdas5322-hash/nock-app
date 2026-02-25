@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+import 'package:nock/shared/widgets/app_icon.dart';
+
 import 'package:phosphor_flutter/phosphor_flutter.dart';
 import 'package:nock/core/theme/app_colors.dart';
 import 'package:nock/core/theme/app_typography.dart';
@@ -19,7 +21,7 @@ class EditToolsOverlay extends StatelessWidget {
   final ValueChanged<double> onTextSizeChanged;
   final ValueChanged<TextFontStyle> onFontStyleChanged;
   final VoidCallback onFinishTextEditing;
-  
+
   // Text Editing Dependencies
   final ValueNotifier<List<TextOverlay>> textOverlaysNotifier;
   final int? selectedTextIndex;
@@ -47,12 +49,22 @@ class EditToolsOverlay extends StatelessWidget {
     required this.isEditingText,
   });
 
+  /// Centralized helper to sync a color change to the currently selected text overlay.
+  /// Eliminates the 3× copy-pasted sync logic.
+  void _applyColorToSelectedText(Color color) {
+    if (selectedTextIndex != null) {
+      final currentTexts = List<TextOverlay>.from(textOverlaysNotifier.value);
+      currentTexts[selectedTextIndex!].color = color;
+      textOverlaysNotifier.value = currentTexts;
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     if (isEditingText) {
       return _buildTextInputField(context);
     }
-    
+
     switch (currentEditMode) {
       case EditMode.draw:
         return _buildDrawToolbar();
@@ -73,33 +85,24 @@ class EditToolsOverlay extends StatelessWidget {
         children: [
           // Stroke width
           ToolbarIconButton(
-            icon: currentStrokeWidth < 10 ? PhosphorIcons.circle(PhosphorIconsStyle.fill) : PhosphorIcons.circle(PhosphorIconsStyle.bold),
+            icon: currentStrokeWidth < 10
+                ? PhosphorIcons.circle(PhosphorIconsStyle.fill)
+                : PhosphorIcons.circle(PhosphorIconsStyle.bold),
             iconSize: currentStrokeWidth.clamp(12, 24),
             onTap: () {
-               final newWidth = currentStrokeWidth >= 15 ? 3.0 : currentStrokeWidth + 4.0;
-               onStrokeWidthChanged(newWidth);
+              final newWidth = currentStrokeWidth >= 15
+                  ? 3.0
+                  : currentStrokeWidth + 4.0;
+              onStrokeWidthChanged(newWidth);
             },
           ),
           const SizedBox(width: 8),
           // Colors
-          ...drawColors.map((color) {
-            final isSelected = color == currentDrawColor;
-            return GestureDetector(
-              onTap: () => onColorChanged(color),
-              child: Container(
-                width: 32, height: 32,
-                margin: const EdgeInsets.symmetric(horizontal: 4),
-                decoration: BoxDecoration(
-                  color: color,
-                  shape: BoxShape.circle,
-                  border: Border.all(
-                    color: isSelected ? AppColors.primaryAction : Colors.white38,
-                    width: isSelected ? 3 : 1,
-                  ),
-                ),
-              ),
-            );
-          }),
+          ColorPickerRow(
+            colors: drawColors,
+            selectedColor: currentDrawColor,
+            onColorSelected: onColorChanged,
+          ),
         ],
       ),
     );
@@ -112,31 +115,14 @@ class EditToolsOverlay extends StatelessWidget {
       child: Row(
         children: [
           // Colors
-          ...drawColors.map((color) {
-            final isSelected = color == currentDrawColor;
-            return GestureDetector(
-              onTap: () {
-                onColorChanged(color);
-                if (selectedTextIndex != null) {
-                  final currentTexts = List<TextOverlay>.from(textOverlaysNotifier.value);
-                  currentTexts[selectedTextIndex!].color = color;
-                  textOverlaysNotifier.value = currentTexts; // Notify
-                }
-              },
-              child: Container(
-                width: 32, height: 32,
-                margin: const EdgeInsets.symmetric(horizontal: 4),
-                decoration: BoxDecoration(
-                  color: color,
-                  shape: BoxShape.circle,
-                  border: Border.all(
-                    color: isSelected ? AppColors.primaryAction : Colors.white38,
-                    width: isSelected ? 3 : 1,
-                  ),
-                ),
-              ),
-            );
-          }),
+          ColorPickerRow(
+            colors: drawColors,
+            selectedColor: currentDrawColor,
+            onColorSelected: (color) {
+              onColorChanged(color);
+              _applyColorToSelectedText(color);
+            },
+          ),
         ],
       ),
     );
@@ -145,12 +131,13 @@ class EditToolsOverlay extends StatelessWidget {
   Widget _buildTextInputField(BuildContext context) {
     final keyboardHeight = MediaQuery.of(context).viewInsets.bottom;
     final topPadding = MediaQuery.of(context).padding.top;
-    
+
     return Material(
       color: Colors.transparent, // User requested: remove bg color
       child: GestureDetector(
         onTap: onFinishTextEditing,
-        behavior: HitTestBehavior.translucent, // Capture taps on empty space to dismiss
+        behavior: HitTestBehavior
+            .translucent, // Capture taps on empty space to dismiss
         child: Stack(
           fit: StackFit.expand,
           children: [
@@ -163,10 +150,13 @@ class EditToolsOverlay extends StatelessWidget {
                     controller: textController,
                     focusNode: textFocusNode,
                     autofocus: true,
-                    style: currentFontStyle.getStyle(currentTextSize, currentDrawColor),
+                    style: currentFontStyle.getStyle(
+                      currentTextSize,
+                      currentDrawColor,
+                    ),
                     textAlign: TextAlign.center,
                     maxLines: null,
-                    decoration: const InputDecoration(
+                    decoration: InputDecoration(
                       filled: false,
                       fillColor: Colors.transparent,
                       border: InputBorder.none,
@@ -176,15 +166,19 @@ class EditToolsOverlay extends StatelessWidget {
                       disabledBorder: InputBorder.none,
                       contentPadding: EdgeInsets.zero,
                       hintText: 'Type...',
-                      hintStyle: TextStyle(color: Colors.white30),
+                      hintStyle: AppTypography.bodyMedium.copyWith(
+                        color: Colors.white30,
+                      ),
                     ),
                     cursorColor: Colors.white,
                     onChanged: (value) {
                       if (selectedTextIndex != null) {
                         // Update text in notifier without setState rebuild
-                        final currentTexts = List<TextOverlay>.from(textOverlaysNotifier.value);
+                        final currentTexts = List<TextOverlay>.from(
+                          textOverlaysNotifier.value,
+                        );
                         currentTexts[selectedTextIndex!].text = value;
-                        // Avoid notifying on every keystroke if it causes lag, 
+                        // Avoid notifying on every keystroke if it causes lag,
                         // but usually it's fine with RepaintBoundary
                         textOverlaysNotifier.value = currentTexts;
                       }
@@ -200,77 +194,76 @@ class EditToolsOverlay extends StatelessWidget {
               left: 0,
               right: 0,
               child: GestureDetector(
-                onTap: () {}, // INTERCEPT: Prevent tap-to-dismiss when interacting with toolbar
+                onTap:
+                    () {}, // INTERCEPT: Prevent tap-to-dismiss when interacting with toolbar
                 behavior: HitTestBehavior.opaque,
                 child: Container(
                   padding: const EdgeInsets.symmetric(vertical: 12),
                   decoration: BoxDecoration(
-                    color: Colors.black.withOpacity(0.8),
-                    borderRadius: const BorderRadius.vertical(top: Radius.circular(16)),
+                    color: AppColors.background.withOpacity(0.8),
+                    borderRadius: const BorderRadius.vertical(
+                      top: Radius.circular(16),
+                    ),
                   ),
                   child: Column(
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                       // Size slider (mini version)
-                       Padding(
-                         padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
-                         child: Row(
-                           children: [
-                             PhosphorIcon(PhosphorIcons.textT(PhosphorIconsStyle.light), color: Colors.white, size: 14),
-                             Expanded(
-                               child: Slider(
-                                 value: currentTextSize,
-                                 min: 16, max: 64,
-                                 onChanged: (v) => onTextSizeChanged(v),
-                                 activeColor: AppColors.primaryAction,
-                               ),
-                             ),
-                             PhosphorIcon(PhosphorIcons.textT(PhosphorIconsStyle.bold), color: Colors.white, size: 24),
-                           ],
-                         ),
-                       ),
-                       // Font styles
-                       SizedBox(
-                         height: 40,
-                         child: ListView(
-                           scrollDirection: Axis.horizontal,
-                           padding: const EdgeInsets.symmetric(horizontal: 16),
-                           children: TextFontStyle.values.map((style) => _buildFontStyleChip(style)).toList(),
-                         ),
-                       ),
-                       const SizedBox(height: 12),
-                       // Colors
-                       SingleChildScrollView(
-                         scrollDirection: Axis.horizontal,
-                         padding: const EdgeInsets.symmetric(horizontal: 16),
-                         child: Row(
-                           children: drawColors.map((color) {
-                             final isSelected = color == currentDrawColor;
-                             return GestureDetector(
-                               onTap: () {
-                                 onColorChanged(color);
-                                   if (selectedTextIndex != null) {
-                                      final currentTexts = List<TextOverlay>.from(textOverlaysNotifier.value);
-                                      currentTexts[selectedTextIndex!].color = color;
-                                      textOverlaysNotifier.value = currentTexts;
-                                   }
-                               },
-                               child: Container(
-                                 width: 32, height: 32,
-                                 margin: const EdgeInsets.symmetric(horizontal: 4),
-                                 decoration: BoxDecoration(
-                                   color: color,
-                                   shape: BoxShape.circle,
-                                   border: Border.all(
-                                     color: isSelected ? AppColors.primaryAction : Colors.white38,
-                                     width: isSelected ? 3 : 1,
-                                   ),
-                                 ),
-                               ),
-                             );
-                           }).toList(),
-                         ),
-                       ),
+                      // Size slider (mini version)
+                      Padding(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 20,
+                          vertical: 8,
+                        ),
+                        child: Row(
+                          children: [
+                            AppIcon(
+                              PhosphorIcons.textT(PhosphorIconsStyle.light),
+                              color: AppColors.textPrimary,
+                              size: 14,
+                            ),
+                            Expanded(
+                              child: Slider(
+                                value: currentTextSize,
+                                min: 16,
+                                max: 64,
+                                onChanged: (v) => onTextSizeChanged(v),
+                                activeColor: AppColors.primaryAction,
+                              ),
+                            ),
+                            AppIcon(
+                              PhosphorIcons.textT(PhosphorIconsStyle.bold),
+                              color: AppColors.textPrimary,
+                              size: 24,
+                            ),
+                          ],
+                        ),
+                      ),
+                      // Font styles
+                      SizedBox(
+                        height: 40,
+                        child: ListView(
+                          scrollDirection: Axis.horizontal,
+                          padding: const EdgeInsets.symmetric(horizontal: 16),
+                          children: TextFontStyle.values
+                              .map((style) => _buildFontStyleChip(style))
+                              .toList(),
+                        ),
+                      ),
+                      const SizedBox(height: 12),
+                      // Colors
+                      SingleChildScrollView(
+                        scrollDirection: Axis.horizontal,
+                        padding: const EdgeInsets.symmetric(horizontal: 16),
+                        child: ColorPickerRow(
+                          colors: drawColors,
+                          selectedColor: currentDrawColor,
+                          onColorSelected: (color) {
+                            onColorChanged(color);
+                            _applyColorToSelectedText(color);
+                          },
+                          unselectedBorderColor: AppColors.textSecondary,
+                        ),
+                      ),
                     ],
                   ),
                 ),
@@ -283,7 +276,14 @@ class EditToolsOverlay extends StatelessWidget {
               right: 16,
               child: TextButton(
                 onPressed: onFinishTextEditing,
-                child: const Text('DONE', style: TextStyle(color: AppColors.primaryAction, fontWeight: FontWeight.bold, fontSize: 18)),
+                child: Text(
+                  'DONE',
+                  style: AppTypography.buttonText.copyWith(
+                    color: AppColors.primaryAction,
+                    fontWeight: FontWeight.bold,
+                    fontSize: 18,
+                  ),
+                ),
               ),
             ),
           ],
@@ -291,10 +291,10 @@ class EditToolsOverlay extends StatelessWidget {
       ),
     );
   }
-  
+
   Widget _buildFontStyleChip(TextFontStyle style) {
     final isSelected = currentFontStyle == style;
-    
+
     return GestureDetector(
       onTap: () => onFontStyleChanged(style),
       child: Container(
@@ -306,12 +306,55 @@ class EditToolsOverlay extends StatelessWidget {
         ),
         child: Text(
           style.displayName,
-          style: style.getStyle(
-            14, 
-            isSelected ? Colors.black : AppColors.textSecondary,
-          ).copyWith(fontSize: 14),
+          style: style
+              .getStyle(
+                14,
+                isSelected ? AppColors.textInverse : AppColors.textSecondary,
+              )
+              .copyWith(fontSize: 14),
         ),
       ),
+    );
+  }
+}
+
+class ColorPickerRow extends StatelessWidget {
+  final List<Color> colors;
+  final Color selectedColor;
+  final ValueChanged<Color> onColorSelected;
+  final Color unselectedBorderColor;
+
+  const ColorPickerRow({
+    super.key,
+    required this.colors,
+    required this.selectedColor,
+    required this.onColorSelected,
+    this.unselectedBorderColor = Colors.white38,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: colors.map((color) {
+        final isSelected = color == selectedColor;
+        return GestureDetector(
+          onTap: () => onColorSelected(color),
+          child: Container(
+            width: 32,
+            height: 32,
+            margin: const EdgeInsets.symmetric(horizontal: 4),
+            decoration: BoxDecoration(
+              color: color,
+              shape: BoxShape.circle,
+              border: Border.all(
+                color: isSelected ? AppColors.primaryAction : unselectedBorderColor,
+                width: isSelected ? 3 : 1,
+              ),
+            ),
+          ),
+        );
+      }).toList(),
     );
   }
 }

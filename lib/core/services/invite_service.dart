@@ -1,7 +1,7 @@
+import 'package:nock/core/theme/app_icons.dart';
 import 'dart:async';
 import 'dart:io';
 import 'dart:ui' as ui;
-import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -10,29 +10,32 @@ import 'package:share_plus/share_plus.dart';
 import 'package:appinio_social_share/appinio_social_share.dart';
 import 'package:flutter/services.dart';
 import '../theme/app_colors.dart';
+import '../theme/app_typography.dart';
 
 /// Invite Service - The "Visual Invite" Engine
-/// 
+///
 /// Based on competitor analysis (Locket, NoteIt, Widgetable):
 /// - Visual invites (images/videos) outperform text links
 /// - Story-ready 9:16 content gets higher engagement
 /// - Deep links should be attached as stickers
-/// 
+///
 /// Strategy:
 /// 1. Generate a beautiful "Invite Card" with user's Aura
 /// 2. Share to Instagram Stories, Snapchat, WhatsApp, SMS
 /// 3. Include personalized deep link for tracking
 class InviteService {
   final AppinioSocialShare _socialShare = AppinioSocialShare();
-  
+
   // Your app's store URLs (replace with actual)
-  static const String appStoreUrl = 'https://apps.apple.com/app/nock/id0000000000';
-  static const String playStoreUrl = 'https://play.google.com/store/apps/details?id=com.nock.nock';
-  
+  static const String appStoreUrl =
+      'https://apps.apple.com/app/nock/id0000000000';
+  static const String playStoreUrl =
+      'https://play.google.com/store/apps/details?id=com.nock.nock';
+
   // --------------------------
   // INVITE LINK STRATEGY
   // --------------------------
-  // 
+  //
   // CURRENT (MVP): Using custom scheme nock://
   //   + Works if app is installed
   //   - NOT clickable on Instagram, TikTok, WhatsApp (shows as plain text)
@@ -42,7 +45,7 @@ class InviteService {
   //   Option A: Use your own domain (e.g., https://getvibe.app/invite/)
   //     - Requires AASA file on server
   //     - Requires Associated Domains entitlement
-  //   
+  //
   //   Option B: Use Firebase Dynamic Links (deprecated) or Branch.io
   //     - Handles app-not-installed gracefully (redirects to store)
   //     - Links are clickable on all social platforms
@@ -54,7 +57,7 @@ class InviteService {
   // This ensures links are clickable on Instagram/WhatsApp and provides
   // a bridge for users who don't have the app installed yet.
   static const String webInviteBaseUrl = 'https://getnock.app/i/';
-  
+
   /// Generate a personalized invite link
   /// Format: nock://invite/USERID (matches document ID in Firestore)
   /// Generate a personalized invite link
@@ -65,12 +68,12 @@ class InviteService {
     await copyInviteLink(link); // Force copy to clipboard for deferred linking
     return link;
   }
-  
+
   /// Get the appropriate store URL for the current platform
   String getStoreUrl() {
     return Platform.isIOS ? appStoreUrl : playStoreUrl;
   }
-  
+
   /// Generate the default invite message with CLICKABLE store link
   /// Note: nock:// links are NOT clickable in WhatsApp/SMS
   /// So we use the store URL which IS clickable
@@ -82,17 +85,17 @@ class InviteService {
     if (customMessage != null && customMessage.isNotEmpty) {
       return customMessage;
     }
-    
+
     // Use store URL (clickable) instead of custom scheme (not clickable)
     final storeLink = getStoreUrl();
-    
+
     return '''🎙️ $senderName invited you to Nock!
 
 Nock lets you send voice messages right to your friends' home screen 💫
 
 Download now: $storeLink''';
   }
-  
+
   /// Share invite via Instagram Stories (most viral!)
   /// API: shareToInstagramStory(appId, {stickerImage, backgroundImage, ...})
   /// Returns true only if Instagram actually opened
@@ -104,7 +107,7 @@ Download now: $storeLink''';
     try {
       final appId = facebookAppId ?? 'YOUR_FB_APP_ID';
       String? result;
-      
+
       if (Platform.isAndroid) {
         result = await _socialShare.android.shareToInstagramStory(
           appId,
@@ -122,17 +125,19 @@ Download now: $storeLink''';
           attributionURL: getStoreUrl(),
         );
       }
-      
+
       // appinio_social_share returns non-empty string on success
       final success = result != null && result.isNotEmpty;
-      debugPrint('InviteService: Instagram Story result: $result, success: $success');
+      debugPrint(
+        'InviteService: Instagram Story result: $result, success: $success',
+      );
       return success;
     } catch (e) {
       debugPrint('InviteService: Instagram Story share failed: $e');
       return false;
     }
   }
-  
+
   /// Share invite via Instagram DM / Feed
   /// Android: shareToInstagramFeed(message, filePath)
   /// iOS: shareToInstagramFeed(imagePath) - only path
@@ -144,17 +149,24 @@ Download now: $storeLink''';
     try {
       String? result;
       if (Platform.isAndroid) {
-        result = await _socialShare.android.shareToInstagramFeed(message, imagePath);
+        result = await _socialShare.android.shareToInstagramFeed(
+          message,
+          imagePath,
+        );
       } else if (Platform.isIOS) {
         result = await _socialShare.iOS.shareToInstagramFeed(imagePath);
       }
-      
+
       final success = result != null && result.isNotEmpty;
-      debugPrint('InviteService: Instagram Feed result: $result, success: $success');
-      
+      debugPrint(
+        'InviteService: Instagram Feed result: $result, success: $success',
+      );
+
       if (!success) {
         // Instagram not installed - use system share
-        debugPrint('InviteService: Instagram not available, using system share');
+        debugPrint(
+          'InviteService: Instagram not available, using system share',
+        );
         return await shareToSystem(imagePath: imagePath, message: message);
       }
       return true;
@@ -164,24 +176,23 @@ Download now: $storeLink''';
       return await shareToSystem(imagePath: imagePath, message: message);
     }
   }
-  
+
   /// Share invite via Snapchat (uses system share - no direct API)
   Future<bool> shareToSnapchat({
     required String imagePath,
     String? message,
   }) async {
     try {
-      await Share.shareXFiles(
-        [XFile(imagePath)],
-        text: message ?? 'Join me on Nock! 🎙️',
-      );
+      await Share.shareXFiles([
+        XFile(imagePath),
+      ], text: message ?? 'Join me on Nock! 🎙️');
       return true;
     } catch (e) {
       debugPrint('InviteService: Snapchat share failed: $e');
       return false;
     }
   }
-  
+
   /// Share invite via WhatsApp
   /// Android: shareToWhatsapp(message, filePath) - supports file
   /// iOS: shareImageToWhatsApp(imagePath) - image only
@@ -199,10 +210,10 @@ Download now: $storeLink''';
         // iOS: Use shareImageToWhatsApp for image sharing
         result = await _socialShare.iOS.shareImageToWhatsApp(imagePath);
       }
-      
-      final success = result != null && result.isNotEmpty;
+
+      final success = result.isNotEmpty;
       debugPrint('InviteService: WhatsApp result: $result, success: $success');
-      
+
       if (!success) {
         debugPrint('InviteService: WhatsApp not available, using system share');
         return await shareToSystem(imagePath: imagePath, message: message);
@@ -214,7 +225,7 @@ Download now: $storeLink''';
       return await shareToSystem(imagePath: imagePath, message: message);
     }
   }
-  
+
   /// Share invite via SMS/Messages
   /// If recipientPhone is provided, opens SMS directly to that contact
   Future<bool> shareToMessages({
@@ -227,16 +238,18 @@ Download now: $storeLink''';
       if (recipientPhone != null && recipientPhone.isNotEmpty) {
         final encodedMessage = Uri.encodeComponent(message);
         final cleanPhone = recipientPhone.replaceAll(RegExp(r'[^\d+]'), '');
-        
+
         // Use sms: URI scheme - works on both iOS and Android
         // Format: sms:+1234567890?body=Hello%20World
         final smsUri = Uri.parse('sms:$cleanPhone?body=$encodedMessage');
-        
+
         // Use platform's default SMS app
         if (Platform.isIOS) {
           // iOS requires & instead of ? for additional params
           final iosSmsUri = Uri.parse('sms:$cleanPhone&body=$encodedMessage');
-          await Share.share(message); // Fallback - iOS doesn't always support body in sms:
+          await Share.share(
+            message,
+          ); // Fallback - iOS doesn't always support body in sms:
           debugPrint('InviteService: SMS to $cleanPhone opened via share');
         } else {
           // Android handles sms: URI well
@@ -244,13 +257,10 @@ Download now: $storeLink''';
         }
         return true;
       }
-      
+
       // Generic share (no specific recipient)
       if (imagePath != null) {
-        await Share.shareXFiles(
-          [XFile(imagePath)],
-          text: message,
-        );
+        await Share.shareXFiles([XFile(imagePath)], text: message);
       } else {
         await Share.share(message);
       }
@@ -260,7 +270,7 @@ Download now: $storeLink''';
       return false;
     }
   }
-  
+
   /// Share invite via Messenger
   /// IMPORTANT: shareToMessenger only takes (String message) - no file support!
   /// We use system share for file + message - opens native share sheet
@@ -277,8 +287,8 @@ Download now: $storeLink''';
       return false;
     }
   }
-  
-  /// Share invite via Telegram  
+
+  /// Share invite via Telegram
   /// Android: shareToTelegram(message, filePath) - supports file
   /// iOS: Uses system share (Telegram API only supports text on iOS)
   Future<bool> shareToTelegram({
@@ -288,12 +298,19 @@ Download now: $storeLink''';
     try {
       if (Platform.isAndroid) {
         // Android supports message + file
-        final result = await _socialShare.android.shareToTelegram(message, imagePath);
-        final success = result != null && result.isNotEmpty;
-        debugPrint('InviteService: Telegram result: $result, success: $success');
-        
+        final result = await _socialShare.android.shareToTelegram(
+          message,
+          imagePath,
+        );
+        final success = result.isNotEmpty;
+        debugPrint(
+          'InviteService: Telegram result: $result, success: $success',
+        );
+
         if (!success) {
-          debugPrint('InviteService: Telegram not available, using system share');
+          debugPrint(
+            'InviteService: Telegram not available, using system share',
+          );
           return await shareToSystem(imagePath: imagePath, message: message);
         }
         return true;
@@ -306,7 +323,7 @@ Download now: $storeLink''';
       return await shareToSystem(imagePath: imagePath, message: message);
     }
   }
-  
+
   /// System share sheet (ultimate fallback - uses share_plus)
   Future<bool> shareToSystem({
     String? imagePath,
@@ -328,7 +345,7 @@ Download now: $storeLink''';
       return false;
     }
   }
-  
+
   /// Copy invite link to clipboard
   /// This is CRITICAL for the "Clipboard Bridge" deferred deep link strategy.
   /// When a new user installs the app, we check the clipboard for this link.
@@ -343,7 +360,7 @@ Download now: $storeLink''';
 }
 
 /// Visual Invite Card Generator
-/// 
+///
 /// Creates beautiful 9:16 story-ready images for sharing.
 /// Based on competitor analysis: Visual invites >> Text links
 class InviteCardGenerator {
@@ -380,13 +397,13 @@ class InviteCardGenerator {
               children: [
                 // Background effects
                 _buildBackgroundEffects(primaryColor, secondaryColor, scale),
-                
+
                 // Main content
                 Column(
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
                     const Spacer(flex: 2),
-                    
+
                     // "Aura" glow effect + Avatar
                     Container(
                       width: 100 * scale,
@@ -432,26 +449,31 @@ class InviteCardGenerator {
                                   errorBuilder: (context, error, stackTrace) {
                                     return Center(
                                       child: Text(
-                                        senderName.isNotEmpty ? senderName[0].toUpperCase() : 'V',
-                                        style: TextStyle(
-                                          fontSize: 40 * scale,
-                                          fontWeight: FontWeight.bold,
-                                          color: Colors.white,
-                                          shadows: [
-                                            Shadow(
-                                              color: primaryColor,
-                                              blurRadius: 10 * scale,
+                                        senderName.isNotEmpty
+                                            ? senderName[0].toUpperCase()
+                                            : 'V',
+                                        style: AppTypography.displayMedium
+                                            .copyWith(
+                                              fontSize: 40 * scale,
+                                              fontWeight: FontWeight.bold,
+                                              color: Colors.white,
+                                              shadows: [
+                                                Shadow(
+                                                  color: primaryColor,
+                                                  blurRadius: 10 * scale,
+                                                ),
+                                              ],
                                             ),
-                                          ],
-                                        ),
                                       ),
                                     );
                                   },
                                 )
                               : Center(
                                   child: Text(
-                                    senderName.isNotEmpty ? senderName[0].toUpperCase() : 'V',
-                                    style: TextStyle(
+                                    senderName.isNotEmpty
+                                        ? senderName[0].toUpperCase()
+                                        : 'V',
+                                    style: AppTypography.displayMedium.copyWith(
                                       fontSize: 40 * scale,
                                       fontWeight: FontWeight.bold,
                                       color: Colors.white,
@@ -467,38 +489,38 @@ class InviteCardGenerator {
                         ),
                       ),
                     ),
-                    
+
                     SizedBox(height: 12 * scale),
-                    
+
                     // Sender name
                     Text(
                       senderName,
-                      style: TextStyle(
+                      style: AppTypography.bodyLarge.copyWith(
                         fontSize: 16 * scale,
                         fontWeight: FontWeight.bold,
                         color: Colors.white,
                         letterSpacing: 0.3 * scale,
                       ),
                     ),
-                    
+
                     SizedBox(height: 4 * scale),
-                    
+
                     // Invite text
                     Text(
                       'wants to send you Vibes',
-                      style: TextStyle(
+                      style: AppTypography.labelSmall.copyWith(
                         fontSize: 9 * scale,
                         color: Colors.white.withOpacity(0.8),
                       ),
                     ),
-                    
+
                     const Spacer(flex: 1),
-                    
+
                     // Call to action
                     Container(
                       padding: EdgeInsets.symmetric(
-                        horizontal: 14 * scale, 
-                        vertical: 6 * scale
+                        horizontal: 14 * scale,
+                        vertical: 6 * scale,
                       ),
                       decoration: BoxDecoration(
                         gradient: LinearGradient(
@@ -515,21 +537,21 @@ class InviteCardGenerator {
                       ),
                       child: Text(
                         'Download Vibe',
-                        style: TextStyle(
+                        style: AppTypography.labelSmall.copyWith(
                           fontSize: 11 * scale,
                           fontWeight: FontWeight.bold,
                           color: Colors.white,
                         ),
                       ),
                     ),
-                    
+
                     SizedBox(height: 8 * scale),
-                    
+
                     // Username/link indicator
                     Container(
                       padding: EdgeInsets.symmetric(
-                        horizontal: 8 * scale, 
-                        vertical: 4 * scale
+                        horizontal: 8 * scale,
+                        vertical: 4 * scale,
                       ),
                       decoration: BoxDecoration(
                         color: Colors.white.withOpacity(0.1),
@@ -537,28 +559,29 @@ class InviteCardGenerator {
                       ),
                       child: Text(
                         'nock://invite/${username.length > 12 ? username.substring(0, 12) : username}...',
-                        style: TextStyle(
+                        style: AppTypography.labelSmall.copyWith(
                           fontSize: 7 * scale,
                           color: Colors.white.withOpacity(0.7),
-                          fontFamily: 'monospace',
                         ),
                       ),
                     ),
-                    
+
                     const Spacer(flex: 2),
-                    
+
                     // Bottom branding
                     Row(
                       mainAxisAlignment: MainAxisAlignment.center,
                       children: [
                         Text(
                           '🎤',
-                          style: TextStyle(fontSize: 11 * scale),
+                          style: AppTypography.bodyLarge.copyWith(
+                            fontSize: 11 * scale,
+                          ),
                         ),
                         SizedBox(width: 4 * scale),
                         Text(
                           'NOCK',
-                          style: TextStyle(
+                          style: AppTypography.labelSmall.copyWith(
                             fontSize: 8 * scale,
                             fontWeight: FontWeight.bold,
                             color: primaryColor,
@@ -567,7 +590,7 @@ class InviteCardGenerator {
                         ),
                       ],
                     ),
-                    
+
                     SizedBox(height: 20 * scale),
                   ],
                 ),
@@ -578,8 +601,12 @@ class InviteCardGenerator {
       },
     );
   }
-  
-  static Widget _buildBackgroundEffects(Color primary, Color secondary, double scale) {
+
+  static Widget _buildBackgroundEffects(
+    Color primary,
+    Color secondary,
+    double scale,
+  ) {
     return Stack(
       children: [
         // Top-left glow
@@ -592,10 +619,7 @@ class InviteCardGenerator {
             decoration: BoxDecoration(
               shape: BoxShape.circle,
               gradient: RadialGradient(
-                colors: [
-                  primary.withOpacity(0.3),
-                  primary.withOpacity(0.0),
-                ],
+                colors: [primary.withOpacity(0.3), primary.withOpacity(0.0)],
               ),
             ),
           ),
@@ -621,7 +645,7 @@ class InviteCardGenerator {
       ],
     );
   }
-  
+
   /// Capture the invite card as an image using the widget tree
   /// Falls back to offscreen rendering if widget is not painted
   static Future<File?> captureInviteCard({
@@ -634,37 +658,39 @@ class InviteCardGenerator {
         await Future.delayed(const Duration(milliseconds: 100));
         await _waitForNextFrame();
       }
-      
+
       final context = cardKey.currentContext;
       if (context == null) {
         debugPrint('InviteCardGenerator: Card context is null');
         return null;
       }
-      
+
       RenderRepaintBoundary? boundary;
       try {
         boundary = context.findRenderObject() as RenderRepaintBoundary?;
       } catch (e) {
-        debugPrint('InviteCardGenerator: Cannot find RenderRepaintBoundary: $e');
+        debugPrint(
+          'InviteCardGenerator: Cannot find RenderRepaintBoundary: $e',
+        );
         return null;
       }
-      
+
       if (boundary == null) {
         debugPrint('InviteCardGenerator: Boundary is null');
         return null;
       }
-      
+
       // If still needs paint after waiting, try forcing layout
       if (boundary.debugNeedsPaint) {
         debugPrint('InviteCardGenerator: Forcing layout...');
-        
+
         // Force a layout pass
         (context as Element).markNeedsBuild();
         await _waitForNextFrame();
         await Future.delayed(const Duration(milliseconds: 300));
         await _waitForNextFrame();
       }
-      
+
       // Final attempt - capture anyway (may work in release mode)
       // debugNeedsPaint only fires in debug mode
       try {
@@ -675,12 +701,12 @@ class InviteCardGenerator {
           return null;
         }
         final pngBytes = byteData.buffer.asUint8List();
-        
+
         final tempDir = await getTemporaryDirectory();
         final timestamp = DateTime.now().millisecondsSinceEpoch;
         final file = File('${tempDir.path}/vibe_invite_$timestamp.png');
         await file.writeAsBytes(pngBytes);
-        
+
         debugPrint('InviteCardGenerator: Card captured successfully');
         return file;
       } catch (e) {
@@ -694,7 +720,7 @@ class InviteCardGenerator {
       return null;
     }
   }
-  
+
   /// Helper to wait for next frame
   static Future<void> _waitForNextFrame() async {
     final completer = Completer<void>();
@@ -703,7 +729,7 @@ class InviteCardGenerator {
     });
     return completer.future;
   }
-  
+
   /// Render invite card offscreen using Canvas (doesn't require widget tree)
   /// This is a fallback when widget-based capture fails
   static Future<File?> renderInviteCardOffscreen({
@@ -718,13 +744,13 @@ class InviteCardGenerator {
   }) async {
     try {
       debugPrint('InviteCardGenerator: Using canvas-based rendering...');
-      
+
       final scale = width / 1080; // Baseline width for scaling
-      
+
       // Create a picture recorder and canvas
       final recorder = ui.PictureRecorder();
       final canvas = Canvas(recorder, Rect.fromLTWH(0, 0, width, height));
-      
+
       // Draw background gradient
       final backgroundPaint = Paint()
         ..shader = ui.Gradient.linear(
@@ -738,18 +764,26 @@ class InviteCardGenerator {
           [0.0, 0.5, 1.0],
         );
       canvas.drawRect(Rect.fromLTWH(0, 0, width, height), backgroundPaint);
-      
+
       // Draw glow effect circles
       final glowPaint1 = Paint()
         ..color = primaryColor.withOpacity(0.15)
         ..maskFilter = MaskFilter.blur(BlurStyle.normal, 100 * scale);
-      canvas.drawCircle(Offset(width * 0.2, height * 0.3), 250 * scale, glowPaint1);
-      
+      canvas.drawCircle(
+        Offset(width * 0.2, height * 0.3),
+        250 * scale,
+        glowPaint1,
+      );
+
       final glowPaint2 = Paint()
         ..color = secondaryColor.withOpacity(0.1)
         ..maskFilter = MaskFilter.blur(BlurStyle.normal, 80 * scale);
-      canvas.drawCircle(Offset(width * 0.8, height * 0.7), 200 * scale, glowPaint2);
-      
+      canvas.drawCircle(
+        Offset(width * 0.8, height * 0.7),
+        200 * scale,
+        glowPaint2,
+      );
+
       // Draw center circle (avatar placeholder)
       final circlePaint = Paint()
         ..shader = ui.Gradient.radial(
@@ -757,113 +791,103 @@ class InviteCardGenerator {
           150 * scale,
           [primaryColor.withOpacity(0.3), primaryColor.withOpacity(0.05)],
         );
-      canvas.drawCircle(Offset(width / 2, height * 0.4), 150 * scale, circlePaint);
-      
+      canvas.drawCircle(
+        Offset(width / 2, height * 0.4),
+        150 * scale,
+        circlePaint,
+      );
+
       // Draw first letter of name in circle
       final letterStyle = ui.TextStyle(
         color: Colors.white,
         fontSize: 120 * scale,
         fontWeight: FontWeight.bold,
       );
-      final letterBuilder = ui.ParagraphBuilder(ui.ParagraphStyle(
-        textAlign: TextAlign.center,
-      ))
-        ..pushStyle(letterStyle)
-        ..addText(senderName.isNotEmpty ? senderName[0].toUpperCase() : 'V');
+      final letterBuilder =
+          ui.ParagraphBuilder(ui.ParagraphStyle(textAlign: TextAlign.center))
+            ..pushStyle(letterStyle)
+            ..addText(
+              senderName.isNotEmpty ? senderName[0].toUpperCase() : 'V',
+            );
       final letterParagraph = letterBuilder.build()
         ..layout(ui.ParagraphConstraints(width: 200 * scale));
       canvas.drawParagraph(
         letterParagraph,
         Offset(width / 2 - (100 * scale), height * 0.4 - (60 * scale)),
       );
-      
+
       // Draw sender name
       final nameStyle = ui.TextStyle(
         color: Colors.white,
         fontSize: 64 * scale,
         fontWeight: FontWeight.bold,
       );
-      final nameBuilder = ui.ParagraphBuilder(ui.ParagraphStyle(
-        textAlign: TextAlign.center,
-      ))
-        ..pushStyle(nameStyle)
-        ..addText(senderName);
+      final nameBuilder =
+          ui.ParagraphBuilder(ui.ParagraphStyle(textAlign: TextAlign.center))
+            ..pushStyle(nameStyle)
+            ..addText(senderName);
       final nameParagraph = nameBuilder.build()
         ..layout(ui.ParagraphConstraints(width: width - (100 * scale)));
-      canvas.drawParagraph(
-        nameParagraph,
-        Offset(50 * scale, height * 0.55),
-      );
-      
+      canvas.drawParagraph(nameParagraph, Offset(50 * scale, height * 0.55));
+
       // Draw "invited you to Vibe" text
       final inviteStyle = ui.TextStyle(
         color: Colors.white.withOpacity(0.8),
         fontSize: 40 * scale,
       );
-      final inviteBuilder = ui.ParagraphBuilder(ui.ParagraphStyle(
-        textAlign: TextAlign.center,
-      ))
-        ..pushStyle(inviteStyle)
-        ..addText('invited you to Nock');
+      final inviteBuilder =
+          ui.ParagraphBuilder(ui.ParagraphStyle(textAlign: TextAlign.center))
+            ..pushStyle(inviteStyle)
+            ..addText('invited you to Nock');
       final inviteParagraph = inviteBuilder.build()
         ..layout(ui.ParagraphConstraints(width: width - (100 * scale)));
-      canvas.drawParagraph(
-        inviteParagraph,
-        Offset(50 * scale, height * 0.62),
-      );
-      
+      canvas.drawParagraph(inviteParagraph, Offset(50 * scale, height * 0.62));
+
       // Draw "Join my squad!" text
       final joinStyle = ui.TextStyle(
         color: primaryColor,
         fontSize: 48 * scale,
         fontWeight: FontWeight.w600,
       );
-      final joinBuilder = ui.ParagraphBuilder(ui.ParagraphStyle(
-        textAlign: TextAlign.center,
-      ))
-        ..pushStyle(joinStyle)
-        ..addText('Join my squad!');
+      final joinBuilder =
+          ui.ParagraphBuilder(ui.ParagraphStyle(textAlign: TextAlign.center))
+            ..pushStyle(joinStyle)
+            ..addText('Join my squad!');
       final joinParagraph = joinBuilder.build()
         ..layout(ui.ParagraphConstraints(width: width - (100 * scale)));
-      canvas.drawParagraph(
-        joinParagraph,
-        Offset(50 * scale, height * 0.72),
-      );
-      
+      canvas.drawParagraph(joinParagraph, Offset(50 * scale, height * 0.72));
+
       // Draw VIBE logo text at bottom
       final logoStyle = ui.TextStyle(
         color: Colors.white.withOpacity(0.5),
         fontSize: 36 * scale,
         fontWeight: FontWeight.bold,
+        // Use Mono for Logo as per Typography class
       );
-      final logoBuilder = ui.ParagraphBuilder(ui.ParagraphStyle(
-        textAlign: TextAlign.center,
-      ))
-        ..pushStyle(logoStyle)
-        ..addText('NOCK');
+      final logoBuilder =
+          ui.ParagraphBuilder(ui.ParagraphStyle(textAlign: TextAlign.center))
+            ..pushStyle(logoStyle)
+            ..addText('NOCK');
       final logoParagraph = logoBuilder.build()
         ..layout(ui.ParagraphConstraints(width: width - (100 * scale)));
-      canvas.drawParagraph(
-        logoParagraph,
-        Offset(50 * scale, height * 0.92),
-      );
-      
+      canvas.drawParagraph(logoParagraph, Offset(50 * scale, height * 0.92));
+
       // Convert to image
       final picture = recorder.endRecording();
       final image = await picture.toImage(width.toInt(), height.toInt());
       final byteData = await image.toByteData(format: ui.ImageByteFormat.png);
-      
+
       if (byteData == null) {
         debugPrint('InviteCardGenerator: Canvas byteData is null');
         return null;
       }
-      
+
       final pngBytes = byteData.buffer.asUint8List();
       final tempDir = await getTemporaryDirectory();
       final timestamp = DateTime.now().millisecondsSinceEpoch;
       final file = File('${tempDir.path}/vibe_invite_$timestamp.png');
       await file.writeAsBytes(pngBytes);
-      
+
       debugPrint('InviteCardGenerator: Canvas render successful');
       return file;
     } catch (e) {
@@ -911,28 +935,28 @@ extension InviteTargetExtension on InviteTarget {
         return 'Other';
     }
   }
-  
+
   IconData get icon {
     switch (this) {
       case InviteTarget.instagramStory:
-        return Icons.camera_alt;
+        return AppIcons.camera;
       case InviteTarget.instagramDm:
-        return Icons.send;
+        return AppIcons.send;
       case InviteTarget.snapchat:
-        return Icons.snapchat;
+        return AppIcons.snapchat;
       case InviteTarget.whatsapp:
-        return Icons.chat;
+        return AppIcons.chat;
       case InviteTarget.messenger:
-        return Icons.messenger;
+        return AppIcons.messenger;
       case InviteTarget.telegram:
-        return Icons.telegram;
+        return AppIcons.telegram;
       case InviteTarget.messages:
-        return Icons.sms;
+        return AppIcons.sms;
       case InviteTarget.other:
-        return Icons.share;
+        return AppIcons.share;
     }
   }
-  
+
   Color get color {
     switch (this) {
       case InviteTarget.instagramStory:

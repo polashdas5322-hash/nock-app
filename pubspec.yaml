@@ -59,7 +59,7 @@ dependencies:
   # Sharing & Export - Viral Video Pipeline
   share_plus: ^10.1.4
   http: ^1.2.2
-  ffmpeg_kit_flutter_new_https: ^2.1.0        # LGPL variant (App Store compliant, with SSL/TLS)
+  ffmpeg_kit_flutter_new: ^4.1.0               # Official LGPL variant (XCFramework support)
   vad: ^0.0.7                              # Speech detection for cost saving
   appinio_social_share: ^0.3.2             # Instagram Stories support
   
@@ -101,3 +101,21 @@ flutter:
     - assets/images/
     - assets/animations/
 
+  fonts:
+    - family: SpaceGrotesk
+      fonts:
+        - asset: assets/fonts/SpaceGrotesk-Regular.ttf
+        - asset: assets/fonts/SpaceGrotesk-Bold.ttf
+          weight: 700
+    - family: Inter
+      fonts:
+        - asset: assets/fonts/Inter-Regular.ttf
+        - asset: assets/fonts/Inter-Medium.ttf
+          weight: 500
+        - asset: assets/fonts/Inter-Bold.ttf
+          weight: 700
+    - family: SpaceMono
+      fonts:
+        - asset: assets/fonts/SpaceMono-Regular.ttf
+        - asset: assets/fonts/SpaceMono-Bold.ttf
+          weight: 700

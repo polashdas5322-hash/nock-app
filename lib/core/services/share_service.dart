@@ -5,14 +5,13 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:http/http.dart' as http;
-import 'package:path/path.dart' as p;
 import 'package:url_launcher/url_launcher.dart';
 
 /// Share Service - Handles viral sharing of Vibes
 /// Creates shareable content for TikTok, Instagram, etc.
 class ShareService {
   ShareService();
-  
+
   // Platform channel for native sharing
   static const _shareChannel = MethodChannel('com.nock.nock/share');
 
@@ -23,7 +22,7 @@ class ShareService {
   Future<void> openTikTok() async {
     final Uri tiktokUri = Uri.parse('tiktok://');
     final Uri webUri = Uri.parse('https://www.tiktok.com/');
-    
+
     try {
       if (await canLaunchUrl(tiktokUri)) {
         await launchUrl(tiktokUri, mode: LaunchMode.externalApplication);
@@ -45,7 +44,7 @@ class ShareService {
         debugPrint('ShareService: Image file does not exist');
         return false;
       }
-      
+
       // Use platform channel for TikTok share with image
       final result = await _shareChannel.invokeMethod<bool>('shareToTikTok', {
         'imagePath': imageFile.path,
@@ -60,14 +59,15 @@ class ShareService {
   /// Check if TikTok is installed
   Future<bool> isTikTokInstalled() async {
     try {
-      final result = await _shareChannel.invokeMethod<bool>('isTikTokInstalled');
+      final result = await _shareChannel.invokeMethod<bool>(
+        'isTikTokInstalled',
+      );
       return result ?? false;
     } catch (e) {
       debugPrint('ShareService: Failed to check TikTok: $e');
       return false;
     }
   }
-
 
   /// Open Instagram's native share sheet with Feed, Messages, Reels, Stories options
   /// This shares directly to Instagram app, showing Instagram's own picker
@@ -77,14 +77,14 @@ class ShareService {
         debugPrint('ShareService: Image file does not exist');
         return false;
       }
-      
+
       // Check if Instagram is installed
       final Uri instagramUri = Uri.parse('instagram://');
       if (!await canLaunchUrl(instagramUri)) {
         debugPrint('ShareService: Instagram not installed');
         return false;
       }
-      
+
       // Use share_plus with Instagram-specific sharing
       // This opens Instagram's native share picker showing Feed, Messages, Reels, Stories
       await Share.shareXFiles(
@@ -92,7 +92,7 @@ class ShareService {
         text: '', // Instagram ignores text for image shares
         sharePositionOrigin: null,
       );
-      
+
       // Note: share_plus opens system share sheet
       // For Instagram-only picker, we need platform channels
       // Using Android Intent to share directly to Instagram
@@ -112,33 +112,34 @@ class ShareService {
         debugPrint('ShareService: Image file does not exist');
         return false;
       }
-      
+
       // BOTH Android and iOS use platform channel for Instagram-only share
       // Android: Uses explicit intent with package="com.instagram.android"
       // iOS: Uses UIDocumentInteractionController with UTI="com.instagram.exclusivegram"
-      final result = await _shareChannel.invokeMethod<bool>('shareToInstagram', {
-        'imagePath': imageFile.path,
-      });
+      final result = await _shareChannel.invokeMethod<bool>(
+        'shareToInstagram',
+        {'imagePath': imageFile.path},
+      );
       return result ?? false;
     } catch (e) {
       debugPrint('ShareService: Instagram share failed: $e');
       return false;
     }
   }
-  
+
   /// Check if Instagram is installed
   Future<bool> isInstagramInstalled() async {
     try {
       // Both platforms use platform channel to check
-      final result = await _shareChannel.invokeMethod<bool>('isInstagramInstalled');
+      final result = await _shareChannel.invokeMethod<bool>(
+        'isInstagramInstalled',
+      );
       return result ?? false;
     } catch (e) {
       debugPrint('ShareService: Failed to check Instagram: $e');
       return false;
     }
   }
-
-
 
   /// Open native system share sheet with all available options
   Future<void> shareGeneric(String text, {File? imageFile}) async {
@@ -168,7 +169,7 @@ class ShareService {
       // Download the audio file temporarily
       final tempDir = await getTemporaryDirectory();
       final audioFile = File('${tempDir.path}/vibe_audio.m4a');
-      
+
       // If it's a URL, download it
       if (audioUrl.startsWith('http')) {
         final response = await http.get(Uri.parse(audioUrl));
@@ -177,7 +178,7 @@ class ShareService {
         // It's a local file path
         await File(audioUrl).copy(audioFile.path);
       }
-      
+
       // Share the file
       await Share.shareXFiles(
         [XFile(audioFile.path)],
@@ -200,7 +201,7 @@ class ShareService {
     try {
       final tempDir = await getTemporaryDirectory();
       final files = <XFile>[];
-      
+
       // Download image
       if (imageUrl.isNotEmpty) {
         final imageFile = File('${tempDir.path}/vibe_image.jpg');
@@ -212,7 +213,7 @@ class ShareService {
         }
         files.add(XFile(imageFile.path));
       }
-      
+
       // Download audio
       if (audioUrl.isNotEmpty) {
         final audioFile = File('${tempDir.path}/vibe_audio.m4a');
@@ -224,11 +225,13 @@ class ShareService {
         }
         files.add(XFile(audioFile.path));
       }
-      
+
       // Share files
       await Share.shareXFiles(
         files,
-        text: message ?? '🎤 Vibe from $senderName\n\nDownload Vibe app to listen! ✨',
+        text:
+            message ??
+            '🎤 Vibe from $senderName\n\nDownload Vibe app to listen! ✨',
         subject: 'Nock from $senderName',
       );
     } catch (e) {
@@ -240,10 +243,11 @@ class ShareService {
   /// Share text with app link
   Future<void> shareAppLink({String? customMessage}) async {
     const appLink = 'https://getvibe.app'; // Replace with actual app store link
-    final message = customMessage ?? 
+    final message =
+        customMessage ??
         '✨ I\'m using Vibe to send voice messages that appear on my friends\' home screens!\n\n'
-        'Download Vibe: $appLink';
-    
+            'Download Vibe: $appLink';
+
     await Share.share(message, subject: 'Check out Vibe!');
   }
 
@@ -259,7 +263,8 @@ class ShareService {
       // In production, you'd overlay the Aura visualization
       await Share.shareXFiles(
         [XFile(imagePath)],
-        text: '🎤 "$message"\n\n- $senderName via Vibe\n\nDownload Vibe to hear the voice message! ✨',
+        text:
+            '🎤 "$message"\n\n- $senderName via Vibe\n\nDownload Vibe to hear the voice message! ✨',
         subject: 'Nock from $senderName',
       );
     } catch (e) {

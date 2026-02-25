@@ -16,45 +16,35 @@ final activeContentIdProvider = StateProvider<String?>((ref) => null);
 
 /// Scoped Audio Player (One per widget/screen)
 /// Automatically handles cleanup/stopping when a new piece of content takes over.
-final scopedAudioPlayerProvider = Provider.autoDispose.family<AudioPlayer, String>((ref, contentId) {
-  final player = AudioPlayer();
-  
-  // LOGIC: If the global active ID changes to something else, WE must stop.
-  ref.listen(activeContentIdProvider, (previous, next) {
-    if (next != contentId) {
-      player.stop(); // Release resources immediately
-    }
-  });
+final scopedAudioPlayerProvider = Provider.autoDispose
+    .family<AudioPlayer, String>((ref, contentId) {
+      final player = AudioPlayer();
 
-  ref.onDispose(() {
-    player.dispose();
-  });
-  
-  return player;
-});
+      // LOGIC: If the global active ID changes to something else, WE must stop.
+      ref.listen(activeContentIdProvider, (previous, next) {
+        if (next != contentId) {
+          player.stop(); // Release resources immediately
+        }
+      });
+
+      ref.onDispose(() {
+        player.dispose();
+      });
+
+      return player;
+    });
 
 /// Audio Recording State
-enum RecordingState {
-  idle,
-  recording,
-  paused,
-  stopped,
-}
+enum RecordingState { idle, recording, paused, stopped }
 
-/// Audio Playback State  
-enum PlaybackState {
-  idle,
-  loading,
-  playing,
-  paused,
-  completed,
-}
+/// Audio Playback State
+enum PlaybackState { idle, loading, playing, paused, completed }
 
 /// Recording State Notifier
 final recordingStateProvider =
     StateNotifierProvider<RecordingStateNotifier, RecordingState>((ref) {
-  return RecordingStateNotifier(ref);
-});
+      return RecordingStateNotifier(ref);
+    });
 
 /// Current recording duration
 final recordingDurationProvider = StateProvider<int>((ref) => 0);
@@ -65,7 +55,7 @@ final waveformDataProvider = StateProvider<List<double>>((ref) => []);
 /// Audio Service Provider
 final audioServiceProvider = Provider<AudioService>((ref) {
   final service = AudioService();
-  
+
   // Sync player state to Riverpod provider
   service.player.onPlayerStateChanged.listen((playerState) {
     PlaybackState newState;
@@ -90,10 +80,14 @@ final audioServiceProvider = Provider<AudioService>((ref) {
 });
 
 /// Playback state provider
-final playbackStateProvider = StateProvider<PlaybackState>((ref) => PlaybackState.idle);
+final playbackStateProvider = StateProvider<PlaybackState>(
+  (ref) => PlaybackState.idle,
+);
 
 /// Current playback position
-final playbackPositionProvider = StateProvider<Duration>((ref) => Duration.zero);
+final playbackPositionProvider = StateProvider<Duration>(
+  (ref) => Duration.zero,
+);
 
 /// Total audio duration
 final totalDurationProvider = StateProvider<Duration>((ref) => Duration.zero);
@@ -140,7 +134,7 @@ class RecordingStateNotifier extends StateNotifier<RecordingState> {
       state = RecordingState.recording;
       _startDurationTimer();
       _startAmplitudeMonitor();
-      
+
       return true;
     } catch (e) {
       debugPrint('Error starting recording: $e');
@@ -153,7 +147,9 @@ class RecordingStateNotifier extends StateNotifier<RecordingState> {
     // 🛡️ STABILITY FIX: Only stop if we are actually recording or paused
     // Prevents "Stop() called but track is not started" native warnings
     if (state != RecordingState.recording && state != RecordingState.paused) {
-      debugPrint('RecordingStateNotifier: stopRecording called while not active. Skipping.');
+      debugPrint(
+        'RecordingStateNotifier: stopRecording called while not active. Skipping.',
+      );
       return null;
     }
 
@@ -162,10 +158,10 @@ class RecordingStateNotifier extends StateNotifier<RecordingState> {
       _durationTimer?.cancel();
       _durationTimer = null;
       _isMonitoring = false; // Stop amplitude loop
-      
+
       final path = await _recorder.stop();
       state = RecordingState.stopped;
-      // NOTE: We no longer clear duration/waveform here 
+      // NOTE: We no longer clear duration/waveform here
       // so the UI can send the data!
       return path;
     } catch (e) {
@@ -203,11 +199,12 @@ class RecordingStateNotifier extends StateNotifier<RecordingState> {
         timer.cancel();
         return;
       }
-      
+
       _ref.read(recordingDurationProvider.notifier).state++;
-      
+
       // Auto-stop at max duration
-      if (_ref.read(recordingDurationProvider) >= AppConstants.maxVoiceNoteDuration) {
+      if (_ref.read(recordingDurationProvider) >=
+          AppConstants.maxVoiceNoteDuration) {
         timer.cancel();
         stopRecording();
       }
@@ -220,19 +217,19 @@ class RecordingStateNotifier extends StateNotifier<RecordingState> {
       try {
         // FIX: Check flag before each state update to prevent defunct element errors
         if (!_isMonitoring) return;
-        
+
         final amplitude = await _recorder.getAmplitude();
         final normalized = ((amplitude.current + 60) / 60).clamp(0.0, 1.0);
-        
+
         // FIX: Double-check before state update
         if (!_isMonitoring) return;
-        
+
         final currentWaveform = [..._ref.read(waveformDataProvider)];
         currentWaveform.add(normalized);
-        
+
         // Keep ALL samples for accurate visualization and storage
         // UI components will downsample as needed
-        
+
         // FIX: Triple-check before state update
         if (!_isMonitoring) return;
         _ref.read(waveformDataProvider.notifier).state = currentWaveform;
@@ -318,18 +315,24 @@ class AudioService {
   /// Handles interruptions (Phone calls, Siri, Alarms) robustly.
   static Future<void> initSession() async {
     final sessionInstance = await session.AudioSession.instance;
-    await sessionInstance.configure(session.AudioSessionConfiguration(
-      // [FIX] PRE-WARM READY: Remove 'const' to allow option combination if supported,
-      // or simply rely on runtime configuration.
-      avAudioSessionCategory: session.AVAudioSessionCategory.playAndRecord,
-      avAudioSessionCategoryOptions: session.AVAudioSessionCategoryOptions.mixWithOthers, 
-      androidAudioAttributes: const session.AndroidAudioAttributes(
-        contentType: session.AndroidAudioContentType.speech,
-        usage: session.AndroidAudioUsage.media,
+    await sessionInstance.configure(
+      session.AudioSessionConfiguration(
+        // [FIX] PRE-WARM READY: Remove 'const' to allow option combination if supported,
+        // or simply rely on runtime configuration.
+        avAudioSessionCategory: session.AVAudioSessionCategory.playAndRecord,
+        // FIX: Added defaultToSpeaker to prevent audio routing to earpiece on iOS
+        avAudioSessionCategoryOptions:
+            session.AVAudioSessionCategoryOptions.mixWithOthers |
+            session.AVAudioSessionCategoryOptions.defaultToSpeaker,
+        androidAudioAttributes: const session.AndroidAudioAttributes(
+          contentType: session.AndroidAudioContentType.speech,
+          usage: session.AndroidAudioUsage.media,
+        ),
+        androidAudioFocusGainType:
+            session.AndroidAudioFocusGainType.gainTransientMayDuck,
       ),
-      androidAudioFocusGainType: session.AndroidAudioFocusGainType.gainTransientMayDuck,
-    ));
-    
+    );
+
     // Handle global interruptions (e.g. Phone Call)
     sessionInstance.interruptionEventStream.listen((event) {
       if (event.begin) {
@@ -347,14 +350,14 @@ class AudioService {
         // Interruption ended
         // We generally DO NOT resume automatically for calls, as per Apple Guidelines.
         // User should explicitly tap play.
-         debugPrint('AudioSession: Interruption ended (${event.type})');
+        debugPrint('AudioSession: Interruption ended (${event.type})');
       }
     });
   }
 }
 
 /// Audio Lifecycle Manager
-/// 
+///
 /// Listens for app lifecycle changes and ensures the iOS audio session
 /// is deactivated when the app is backgrounded to prevent the "Red Bar".
 class AudioLifecycleManager extends ConsumerStatefulWidget {
@@ -362,10 +365,12 @@ class AudioLifecycleManager extends ConsumerStatefulWidget {
   const AudioLifecycleManager({super.key, required this.child});
 
   @override
-  ConsumerState<AudioLifecycleManager> createState() => _AudioLifecycleManagerState();
+  ConsumerState<AudioLifecycleManager> createState() =>
+      _AudioLifecycleManagerState();
 }
 
-class _AudioLifecycleManagerState extends ConsumerState<AudioLifecycleManager> with WidgetsBindingObserver {
+class _AudioLifecycleManagerState extends ConsumerState<AudioLifecycleManager>
+    with WidgetsBindingObserver {
   static const _platform = MethodChannel('com.vive.app/audio');
 
   @override
@@ -395,15 +400,19 @@ class _AudioLifecycleManagerState extends ConsumerState<AudioLifecycleManager> w
         // This ensures the hardware is released and prevents "IsBusy" errors (0x62757379)
         await ref.read(recordingStateProvider.notifier).stopRecording();
         await ref.read(audioServiceProvider).stop();
-        
+
         // STEP 2: Slight delay to allow AVAudioSession to enter a non-busy state
         // Higher-level players (Audioplayers/Record) may take a few ms to release the sink
         await Future.delayed(const Duration(milliseconds: 200));
 
         await _platform.invokeMethod('deactivateSession');
-        debugPrint('🔗 AudioLifecycle: iOS session deactivated to prevent Red Bar');
+        debugPrint(
+          '🔗 AudioLifecycle: iOS session deactivated to prevent Red Bar',
+        );
       } on PlatformException catch (e) {
-        debugPrint('🔗 AudioLifecycle: Failed to deactivate session: ${e.message}');
+        debugPrint(
+          '🔗 AudioLifecycle: Failed to deactivate session: ${e.message}',
+        );
       }
     }
   }

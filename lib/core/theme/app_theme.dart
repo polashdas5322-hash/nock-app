@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'app_colors.dart';
+import 'app_dimens.dart';
 import 'app_typography.dart';
 
 /// Main Theme Configuration for Vibe App
@@ -40,14 +41,13 @@ class AppTheme {
         color: AppColors.surfaceCard,
         elevation: 0,
         shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(16), // Softer corners for modern HUD
+          borderRadius: BorderRadius.circular(
+            AppDimens.r16,
+          ), // Softer corners for modern HUD
           side: const BorderSide(color: AppColors.glassBorder, width: 1.0),
         ),
       ),
-      iconTheme: const IconThemeData(
-        color: AppColors.textPrimary,
-        size: 24,
-      ),
+      iconTheme: const IconThemeData(color: AppColors.textPrimary, size: 24),
       textTheme: TextTheme(
         displayLarge: AppTypography.displayLarge,
         displayMedium: AppTypography.displayMedium,
@@ -68,7 +68,7 @@ class AppTheme {
           foregroundColor: AppColors.background,
           padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 16),
           shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(8),
+            borderRadius: BorderRadius.circular(AppDimens.r8),
           ),
           textStyle: AppTypography.buttonText,
         ),
@@ -79,7 +79,7 @@ class AppTheme {
           side: const BorderSide(color: AppColors.primaryAction, width: 2),
           padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 16),
           shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(8),
+            borderRadius: BorderRadius.circular(AppDimens.r8),
           ),
           textStyle: AppTypography.buttonText.copyWith(
             color: AppColors.primaryAction,
@@ -96,29 +96,35 @@ class AppTheme {
         filled: true,
         fillColor: AppColors.surfaceLight,
         border: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(8),
+          borderRadius: BorderRadius.circular(AppDimens.r8),
           borderSide: const BorderSide(color: AppColors.glassBorder, width: 1),
         ),
         focusedBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(8),
-          borderSide: const BorderSide(color: AppColors.primaryAction, width: 2), // High contrast
+          borderRadius: BorderRadius.circular(AppDimens.r8),
+          borderSide: const BorderSide(
+            color: AppColors.primaryAction,
+            width: 2,
+          ), // High contrast
         ),
         hintStyle: AppTypography.bodyMedium.copyWith(
           color: AppColors.textTertiary,
         ),
-        contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+        contentPadding: const EdgeInsets.symmetric(
+          horizontal: 20,
+          vertical: 16,
+        ),
       ),
       dialogTheme: DialogThemeData(
         backgroundColor: AppColors.surface,
         shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(20),
+          borderRadius: BorderRadius.circular(AppDimens.r20),
         ),
       ),
       snackBarTheme: SnackBarThemeData(
         backgroundColor: AppColors.surfaceLight,
         contentTextStyle: AppTypography.bodyMedium,
         shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(8),
+          borderRadius: BorderRadius.circular(AppDimens.r8),
           side: const BorderSide(color: AppColors.glassBorder, width: 1),
         ),
         behavior: SnackBarBehavior.floating,

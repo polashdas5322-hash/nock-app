@@ -1,27 +1,23 @@
+import 'package:nock/core/theme/app_icons.dart';
 import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:go_router/go_router.dart';
 import 'package:home_widget/home_widget.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_typography.dart';
+import '../../../core/theme/app_dimens.dart';
 import '../../../core/models/user_model.dart';
 import '../../../core/providers/friends_provider.dart';
-import '../../../core/services/widget_update_service.dart';
-import '../../../shared/widgets/glass_container.dart';
 
 /// Modern BFF Widget Configuration Screen
-/// 
-/// Replaces the legacy BFFConfigActivity.kt with a fluid, visually rich 
+///
+/// Replaces the legacy BFFConfigActivity.kt with a fluid, visually rich
 /// interface that follows the 2025 "Liquid Glass" and "Aura" design trends.
 class BFFConfigScreen extends ConsumerStatefulWidget {
   final int appWidgetId;
 
-  const BFFConfigScreen({
-    super.key,
-    required this.appWidgetId,
-  });
+  const BFFConfigScreen({super.key, required this.appWidgetId});
 
   @override
   ConsumerState<BFFConfigScreen> createState() => _BFFConfigScreenState();
@@ -44,25 +40,25 @@ class _BFFConfigScreenState extends ConsumerState<BFFConfigScreen> {
           // Aura Background
           Positioned.fill(
             child: Container(
-              decoration: const BoxDecoration(
-                gradient: AppColors.darkGradient,
-              ),
+              decoration: const BoxDecoration(gradient: AppColors.darkGradient),
             ),
           ),
-          
+
           SafeArea(
             child: Column(
               children: [
                 _buildSearchBar(),
-                const SizedBox(height: 16),
+                const SizedBox(height: AppDimens.p16),
                 Expanded(
                   child: friendsAsync.when(
                     data: (friends) {
                       // Hick's Law: Filter and Sort
                       final filtered = friends
-                          .where((f) => f.displayName
-                              .toLowerCase()
-                              .contains(_searchQuery.toLowerCase()))
+                          .where(
+                            (f) => f.displayName.toLowerCase().contains(
+                              _searchQuery.toLowerCase(),
+                            ),
+                          )
                           .toList();
 
                       // Sort by activity mapping (if friendship data was available)
@@ -73,7 +69,9 @@ class _BFFConfigScreenState extends ConsumerState<BFFConfigScreen> {
                       }
 
                       return ListView.builder(
-                        padding: const EdgeInsets.symmetric(vertical: 8),
+                        padding: const EdgeInsets.symmetric(
+                          vertical: AppDimens.p8,
+                        ),
                         itemCount: filtered.length,
                         itemBuilder: (context, index) {
                           return _buildFriendCard(filtered[index]);
@@ -81,7 +79,9 @@ class _BFFConfigScreenState extends ConsumerState<BFFConfigScreen> {
                       );
                     },
                     loading: () => const Center(
-                      child: CircularProgressIndicator(color: AppColors.primaryAction),
+                      child: CircularProgressIndicator(
+                        color: AppColors.primaryAction,
+                      ),
                     ),
                     error: (e, _) => Center(
                       child: Text('Error: $e', style: AppTypography.bodyMedium),
@@ -98,22 +98,17 @@ class _BFFConfigScreenState extends ConsumerState<BFFConfigScreen> {
 
   PreferredSizeWidget _buildLiquidAppBar() {
     return AppBar(
-      backgroundColor: Colors.transparent,
+      backgroundColor: AppColors.transparent,
       elevation: 0,
       title: Text(
         "Pick your BFF",
-        style: AppTypography.headlineMedium.copyWith(
-          fontFamily: 'Outfit', // Using Outfit as requested for modern feel
-          letterSpacing: -0.5,
-        ),
+        style: AppTypography.headlineMedium.copyWith(letterSpacing: -0.5),
       ),
       centerTitle: true,
       flexibleSpace: ClipRRect(
         child: BackdropFilter(
           filter: ImageFilter.blur(sigmaX: 16, sigmaY: 16),
-          child: Container(
-            color: AppColors.background.withOpacity(0.6),
-          ),
+          child: Container(color: AppColors.background.withOpacity(0.6)),
         ),
       ),
     );
@@ -121,21 +116,26 @@ class _BFFConfigScreenState extends ConsumerState<BFFConfigScreen> {
 
   Widget _buildSearchBar() {
     return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 24.0),
+      padding: const EdgeInsets.symmetric(horizontal: AppDimens.p24),
       child: TextField(
-        style: const TextStyle(color: Colors.white),
+        style: AppTypography.bodyLarge.copyWith(color: AppColors.textPrimary),
         onChanged: (val) => setState(() => _searchQuery = val),
         decoration: InputDecoration(
           hintText: "Search your squad...",
-          hintStyle: TextStyle(color: Colors.white.withOpacity(0.4)),
+          hintStyle: AppTypography.bodyLarge.copyWith(
+            color: AppColors.textSecondary,
+          ),
           filled: true,
-          fillColor: Colors.white.withOpacity(0.05),
-          contentPadding: const EdgeInsets.symmetric(vertical: 16, horizontal: 20),
+          fillColor: AppColors.textPrimary.withOpacity(0.05),
+          contentPadding: const EdgeInsets.symmetric(
+            vertical: AppDimens.p16,
+            horizontal: AppDimens.p20,
+          ),
           border: OutlineInputBorder(
-            borderRadius: BorderRadius.circular(24),
+            borderRadius: BorderRadius.circular(AppDimens.r24),
             borderSide: BorderSide.none,
           ),
-          prefixIcon: Icon(Icons.search, color: Colors.white.withOpacity(0.5)),
+          prefixIcon: Icon(AppIcons.search, color: AppColors.textSecondary),
         ),
       ),
     );
@@ -145,38 +145,45 @@ class _BFFConfigScreenState extends ConsumerState<BFFConfigScreen> {
     final isSelected = _selectedFriendId == friend.id;
 
     return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 6.0),
+      padding: const EdgeInsets.symmetric(
+        horizontal: AppDimens.p16,
+        vertical: AppDimens.p12 / 2,
+      ),
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 200),
         curve: Curves.easeOutQuint,
         decoration: BoxDecoration(
-          color: isSelected ? AppColors.primaryAction.withOpacity(0.1) : Colors.white.withOpacity(0.03),
-          borderRadius: BorderRadius.circular(24),
+          color: isSelected
+              ? AppColors.primaryAction.withOpacity(0.1)
+              : AppColors.textPrimary.withOpacity(0.03),
+          borderRadius: BorderRadius.circular(AppDimens.r24),
           border: Border.all(
-            color: isSelected ? AppColors.primaryAction.withOpacity(0.5) : Colors.white.withOpacity(0.05),
+            color: isSelected
+                ? AppColors.primaryAction.withOpacity(0.5)
+                : AppColors.textPrimary.withOpacity(0.05),
             width: isSelected ? 1.5 : 1,
           ),
         ),
         child: Material(
-          color: Colors.transparent,
+          color: AppColors.transparent,
           child: InkWell(
-            borderRadius: BorderRadius.circular(24),
+            borderRadius: BorderRadius.circular(AppDimens.r24),
             onTap: () async {
               HapticFeedback.selectionClick();
               setState(() => _selectedFriendId = friend.id);
-              
+
               // Save to Native Widget via HomeWidget
               await _saveFriendToWidget(friend);
-              
+
               // Delay slightly for animation
               Future.delayed(const Duration(milliseconds: 300), () {
                 if (mounted) {
-                   Navigator.of(context).pop();
+                  Navigator.of(context).pop();
                 }
               });
             },
             child: Padding(
-              padding: const EdgeInsets.all(16),
+              padding: const EdgeInsets.all(AppDimens.p16),
               child: Row(
                 children: [
                   Container(
@@ -190,10 +197,12 @@ class _BFFConfigScreenState extends ConsumerState<BFFConfigScreen> {
                               fit: BoxFit.cover,
                             )
                           : null,
-                      gradient: friend.avatarUrl == null ? AppColors.primaryGradient : null,
+                      gradient: friend.avatarUrl == null
+                          ? AppColors.primaryGradient
+                          : null,
                     ),
                   ),
-                  const SizedBox(width: 16),
+                  const SizedBox(width: AppDimens.p16),
                   Expanded(
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
@@ -201,7 +210,9 @@ class _BFFConfigScreenState extends ConsumerState<BFFConfigScreen> {
                         Text(
                           friend.displayName,
                           style: AppTypography.labelLarge.copyWith(
-                            color: isSelected ? AppColors.primaryAction : Colors.white,
+                            color: isSelected
+                                ? AppColors.primaryAction
+                                : AppColors.textPrimary,
                           ),
                         ),
                         if (friend.username != null)
@@ -213,8 +224,10 @@ class _BFFConfigScreenState extends ConsumerState<BFFConfigScreen> {
                     ),
                   ),
                   Icon(
-                    isSelected ? Icons.check_circle : Icons.circle_outlined,
-                    color: isSelected ? AppColors.primaryAction : Colors.white.withOpacity(0.2),
+                    isSelected ? AppIcons.checkCircle : AppIcons.circle,
+                    color: isSelected
+                        ? AppColors.primaryAction
+                        : AppColors.textSecondary,
                   ),
                 ],
               ),
@@ -230,11 +243,17 @@ class _BFFConfigScreenState extends ConsumerState<BFFConfigScreen> {
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          Icon(Icons.people_outline, size: 64, color: Colors.white.withOpacity(0.2)),
-          const SizedBox(height: 16),
+          Icon(
+            AppIcons.friends,
+            size: AppDimens.iconXL + AppDimens.p16,
+            color: AppColors.textSecondary,
+          ),
+          const SizedBox(height: AppDimens.p16),
           Text(
             "No friends found",
-            style: AppTypography.headlineSmall.copyWith(color: Colors.white.withOpacity(0.5)),
+            style: AppTypography.headlineSmall.copyWith(
+              color: AppColors.textSecondary,
+            ),
           ),
         ],
       ),
@@ -244,17 +263,21 @@ class _BFFConfigScreenState extends ConsumerState<BFFConfigScreen> {
   Future<void> _saveFriendToWidget(UserModel friend) async {
     // Ported from BFFConfigActivity.kt logic
     final keyPrefix = "widget_${widget.appWidgetId}";
-    
+
     await Future.wait([
       HomeWidget.saveWidgetData<String>('${keyPrefix}_friendId', friend.id),
-      HomeWidget.saveWidgetData<String>('${keyPrefix}_name', friend.displayName),
-      HomeWidget.saveWidgetData<String>('${keyPrefix}_avatar', friend.avatarUrl ?? ''),
+      HomeWidget.saveWidgetData<String>(
+        '${keyPrefix}_name',
+        friend.displayName,
+      ),
+      HomeWidget.saveWidgetData<String>(
+        '${keyPrefix}_avatar',
+        friend.avatarUrl ?? '',
+      ),
     ]);
 
     // Update the widget
-    await HomeWidget.updateWidget(
-      name: 'BFFWidgetProvider',
-    );
+    await HomeWidget.updateWidget(name: 'BFFWidgetProvider');
 
     // Communicate back to native to finish configuration
     const widgetChannel = MethodChannel('com.nock.nock/widget');

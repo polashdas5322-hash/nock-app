@@ -87,9 +87,98 @@ struct BFFWidgetView: View {
         switch family {
         case .accessoryCircular:
             accessoryCircularView
+        case .systemMedium:
+            mediumView
         default:
             homeScreenView
         }
+    }
+    
+    // MARK: - Medium View (Wide)
+    private var mediumView: some View {
+        Button(intent: RecordVibeIntent(friendId: entry.friendId)) {
+            GeometryReader { geometry in
+                ZStack {
+                    // Background gradient
+                    LinearGradient(
+                        colors: [
+                            Color(hex: "121226"),
+                            Color(hex: "0A0A1A")
+                        ],
+                        startPoint: .topLeading,
+                        endPoint: .bottomTrailing
+                    )
+                    
+                    HStack(spacing: 16) {
+                        // Avatar (Left Side)
+                        ZStack {
+                            let size = geometry.size.height * 0.7
+                            
+                            Circle()
+                                .fill(
+                                    LinearGradient(
+                                        colors: [Color(hex: "D4F49C"), Color(hex: "E5D1FA")],
+                                        startPoint: .topLeading,
+                                        endPoint: .bottomTrailing
+                                    )
+                                )
+                                .frame(width: size, height: size)
+                            
+                            if let imageURL = entry.avatarURL,
+                               let uiImage = downsample(at: imageURL, to: CGSize(width: size, height: size)) {
+                                Image(uiImage: uiImage)
+                                    .resizable()
+                                    .aspectRatio(contentMode: .fill)
+                                    .frame(width: size * 0.9, height: size * 0.9)
+                                    .clipShape(Circle())
+                            } else {
+                                Text(String(entry.friendName.prefix(1)).uppercased())
+                                    .font(.system(size: size * 0.4, weight: .bold))
+                                    .foregroundColor(.white)
+                            }
+                            
+                            // Mic indicator
+                            Circle()
+                                .fill(Color(hex: "D4F49C"))
+                                .frame(width: size * 0.3, height: size * 0.3)
+                                .overlay(
+                                    Image(systemName: "mic.fill")
+                                        .font(.system(size: size * 0.15))
+                                        .foregroundColor(.black)
+                                )
+                                .offset(x: size * 0.35, y: size * 0.35)
+                        }
+                        
+                        // Details (Right Side)
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text(entry.friendName)
+                                .font(.system(size: 18, weight: .bold)) // Larger text
+                                .foregroundColor(.white)
+                                .lineLimit(1)
+                            
+                            if entry.streak > 0 {
+                                HStack(spacing: 4) {
+                                    Image(systemName: "flame.fill")
+                                        .foregroundColor(.orange)
+                                    Text("\(entry.streak) day streak")
+                                        .foregroundColor(.white)
+                                }
+                                .font(.system(size: 14, weight: .medium))
+                            } else {
+                                Text("Send a vibe")
+                                    .font(.system(size: 14))
+                                    .foregroundColor(.gray)
+                            }
+                        }
+                        
+                        Spacer()
+                    }
+                    .padding(.horizontal, 24)
+                }
+            }
+            .containerBackground(.clear, for: .widget)
+        }
+        .buttonStyle(.plain)
     }
     
     // MARK: - Lock Screen Circular View
@@ -236,7 +325,7 @@ struct BFFWidget: Widget {
         }
         .configurationDisplayName("BFF")
         .description("Quick access to your closest friend")
-        .supportedFamilies([.systemSmall, .accessoryCircular])
+        .supportedFamilies([.systemSmall, .systemMedium, .accessoryCircular])
     }
 }
 

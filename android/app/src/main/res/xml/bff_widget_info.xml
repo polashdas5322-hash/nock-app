@@ -7,7 +7,7 @@
     android:updatePeriodMillis="0"
     android:initialLayout="@layout/bff_widget_layout"
     android:previewImage="@drawable/widget_preview"
-    android:resizeMode="none"
+    android:resizeMode="horizontal|vertical"
     android:widgetCategory="home_screen|keyguard"
     android:configure="com.nock.nock.MainActivity"
     android:description="@string/bff_widget_description">

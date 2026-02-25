@@ -2,16 +2,17 @@ import 'dart:ui';
 import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:nock/core/theme/app_colors.dart';
+import 'package:nock/core/theme/app_typography.dart';
 import 'package:nock/core/constants/app_constants.dart';
 
 /// Glassmorphic Container - 2025 Enhanced (Luminous Architecture)
-/// 
+///
 /// Key Changes for 2025:
 /// - Luminous gradient borders (simulates light catching glass edges)
 /// - Layered structure for proper depth
 /// - Optional inner glow for premium feel
 /// - Variable blur support
-/// 
+///
 /// Set `useLuminousBorder: true` to enable the Spatial Glass effect
 class GlassContainer extends StatelessWidget {
   final Widget child;
@@ -27,7 +28,7 @@ class GlassContainer extends StatelessWidget {
   final bool useSmallGlow;
   final Color glowColor;
   final VoidCallback? onTap;
-  
+
   /// Enable luminous gradient borders (Spatial Glass architecture)
   /// Creates light-catching effect on glass edges
   final bool useLuminousBorder;
@@ -58,7 +59,7 @@ class GlassContainer extends StatelessWidget {
     // that causes eye strain for ~50% of users (those with astigmatism).
     // Rule: You can have ONE glow source, not both.
     final effectiveShowGlow = showGlow && !useLuminousBorder;
-    
+
     return Container(
       margin: margin,
       decoration: effectiveShowGlow
@@ -125,8 +126,8 @@ class GlassContainer extends StatelessWidget {
       begin: Alignment.topCenter,
       end: Alignment.bottomCenter,
       colors: [
-        Colors.white.withAlpha(13), // 5%
-        Colors.white.withAlpha(5),  // 2%
+        AppColors.textPrimary.withOpacity(0.05), // 5%
+        AppColors.textPrimary.withOpacity(0.02), // 2%
       ],
     );
   }
@@ -137,9 +138,9 @@ class GlassContainer extends StatelessWidget {
       begin: Alignment.topLeft,
       end: Alignment.bottomRight,
       colors: [
-        Colors.white.withAlpha(20), // 8%
-        Colors.white.withAlpha(5),  // 2%
-        Colors.transparent,
+        AppColors.textPrimary.withOpacity(0.08), // 8%
+        AppColors.textPrimary.withOpacity(0.02), // 2%
+        AppColors.transparent,
       ],
       stops: const [0.0, 0.3, 1.0],
     );
@@ -151,42 +152,36 @@ class GlassContainer extends StatelessWidget {
 class _LuminousBorderPainter extends CustomPainter {
   final double borderRadius;
   final Color borderColor;
-  
+
   _LuminousBorderPainter({
     required this.borderRadius,
     required this.borderColor,
   });
-  
+
   @override
   void paint(Canvas canvas, Size size) {
     final rect = Rect.fromLTWH(0, 0, size.width, size.height);
-    final rrect = RRect.fromRectAndRadius(
-      rect,
-      Radius.circular(borderRadius),
-    );
-    
+    final rrect = RRect.fromRectAndRadius(rect, Radius.circular(borderRadius));
+
     // Create gradient shader (top bright, bottom fades)
     final gradient = LinearGradient(
       begin: Alignment.topCenter,
       end: Alignment.bottomCenter,
-      colors: [
-        AppColors.luminousBorderTop,
-        AppColors.luminousBorderBottom,
-      ],
+      colors: [AppColors.luminousBorderTop, AppColors.luminousBorderBottom],
     );
-    
+
     final paint = Paint()
       ..shader = gradient.createShader(rect)
       ..style = PaintingStyle.stroke
       ..strokeWidth = 1.5;
-    
+
     canvas.drawRRect(rrect, paint);
   }
-  
+
   @override
   bool shouldRepaint(_LuminousBorderPainter oldDelegate) {
     return oldDelegate.borderRadius != borderRadius ||
-           oldDelegate.borderColor != borderColor;
+        oldDelegate.borderColor != borderColor;
   }
 }
 
@@ -195,17 +190,17 @@ class _LuminousBorderPainter extends CustomPainter {
 class CircularLuminousBorderPainter extends CustomPainter {
   final double strokeWidth;
   final Color baseColor;
-  
+
   CircularLuminousBorderPainter({
     required this.strokeWidth,
     required this.baseColor,
   });
-  
+
   @override
   void paint(Canvas canvas, Size size) {
     final center = Offset(size.width / 2, size.height / 2);
     final radius = size.width / 2;
-    
+
     // Create gradient shader (top bright, bottom fades)
     // For circular shapes, we simulate top-bottom gradient radially
     final gradient = SweepGradient(
@@ -214,30 +209,30 @@ class CircularLuminousBorderPainter extends CustomPainter {
       endAngle: 3 * math.pi / 2, // End at top (full rotation)
       colors: [
         // Top (brightest)
-        Color.lerp(baseColor, Colors.white, 0.6)!,
+        Color.lerp(baseColor, AppColors.textPrimary, 0.6)!,
         // Sides (medium)
         baseColor,
         // Bottom (fade)
-        Color.lerp(baseColor, Colors.transparent, 0.7)!,
+        Color.lerp(baseColor, AppColors.transparent, 0.7)!,
         // Back to top
-        Color.lerp(baseColor, Colors.white, 0.6)!,
+        Color.lerp(baseColor, AppColors.textPrimary, 0.6)!,
       ],
       stops: const [0.0, 0.25, 0.5, 1.0],
     );
-    
+
     final rect = Rect.fromCircle(center: center, radius: radius);
     final paint = Paint()
       ..shader = gradient.createShader(rect)
       ..style = PaintingStyle.stroke
       ..strokeWidth = strokeWidth;
-    
+
     canvas.drawCircle(center, radius - strokeWidth / 2, paint);
   }
-  
+
   @override
   bool shouldRepaint(CircularLuminousBorderPainter oldDelegate) {
     return oldDelegate.strokeWidth != strokeWidth ||
-           oldDelegate.baseColor != baseColor;
+        oldDelegate.baseColor != baseColor;
   }
 }
 
@@ -269,8 +264,7 @@ class GlassCard extends StatelessWidget {
       showGlow: isSelected,
       glowColor: AppColors.primaryAction,
       useLuminousBorder: true, // âœ¨ Enable Spatial Glass by default
-      borderColor:
-          isSelected ? AppColors.primaryAction : AppColors.glassBorder,
+      borderColor: isSelected ? AppColors.primaryAction : AppColors.glassBorder,
       onTap: onTap,
       child: child,
     );
@@ -312,9 +306,10 @@ class _GlassButtonState extends State<GlassButton>
       duration: const Duration(milliseconds: 100),
       vsync: this,
     );
-    _scaleAnimation = Tween<double>(begin: 1.0, end: 0.95).animate(
-      CurvedAnimation(parent: _controller, curve: Curves.easeInOut),
-    );
+    _scaleAnimation = Tween<double>(
+      begin: 1.0,
+      end: 0.95,
+    ).animate(CurvedAnimation(parent: _controller, curve: Curves.easeInOut));
   }
 
   @override
@@ -383,15 +378,13 @@ class GlassPill extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final color = accentColor ?? AppColors.primaryAction;
-    
+
     return GestureDetector(
       onTap: onTap,
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
         decoration: BoxDecoration(
-          color: isActive 
-              ? color.withAlpha(51) 
-              : AppColors.glassBackground,
+          color: isActive ? color.withAlpha(51) : AppColors.glassBackground,
           borderRadius: BorderRadius.circular(24),
           border: Border.all(
             color: isActive ? color : AppColors.glassBorder,
@@ -402,12 +395,16 @@ class GlassPill extends StatelessWidget {
           mainAxisSize: MainAxisSize.min,
           children: [
             if (icon != null) ...[
-              Icon(icon, size: 18, color: isActive ? color : AppColors.textSecondary),
+              Icon(
+                icon,
+                size: 18,
+                color: isActive ? color : AppColors.textSecondary,
+              ),
               const SizedBox(width: 8),
             ],
             Text(
               label,
-              style: TextStyle(
+              style: AppTypography.labelMedium.copyWith(
                 color: isActive ? color : AppColors.textSecondary,
                 fontSize: 14,
                 fontWeight: isActive ? FontWeight.w600 : FontWeight.normal,

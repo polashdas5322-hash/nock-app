@@ -1,17 +1,29 @@
-import 'dart:io';
+import 'package:phosphor_flutter/phosphor_flutter.dart';
+import 'package:nock/core/theme/app_icons.dart';
+import 'package:nock/shared/widgets/app_icon.dart';
+
+import 'dart:ui';
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
-import 'package:nock/core/services/auth_service.dart';
 import 'package:nock/core/theme/app_colors.dart';
+import 'package:nock/core/theme/app_typography.dart';
 import 'package:nock/core/constants/app_routes.dart';
+import 'package:nock/core/services/auth_service.dart';
+import 'package:nock/core/services/deep_link_service.dart';
+import 'package:nock/shared/widgets/glass_container.dart';
+// import 'package:video_player/video_player.dart'; // Ensure this package is available
 
-/// Welcome Screen with Multi-Method Authentication
+/// THE HERO WELCOME (Step 1 of 4)
 /// 
-/// Supports authentication methods:
-/// 1. Apple Sign-In (iOS) / Google Sign-In - Fastest, 1-tap
-/// 2. Google Sign-In (Android/iOS) - Most common
+/// "The Front Door."
+/// 
+/// Merges Auth + Intro.
+/// - High-quality background (Video/Animation)
+/// - Strong Value Prop ("Real friends, real life.")
+/// - Simple Auth buttons (Google/Apple)
+/// 
+/// 2025 REFACTOR: Simplified significantly to remove "Explainers".
 class WelcomeScreen extends ConsumerStatefulWidget {
   const WelcomeScreen({super.key});
 
@@ -21,402 +33,287 @@ class WelcomeScreen extends ConsumerStatefulWidget {
 
 class _WelcomeScreenState extends ConsumerState<WelcomeScreen> {
   bool _isLoading = false;
-  String? _errorMessage;
-  
-  // Progressive Disclosure: Show secondary auth options on Android
-  bool _showMoreOptions = false;
+  String? _statusText; // UI Feedback for clipboard operations
+  // TODO: Add VideoPlayerController if we have a legitimate video asset. 
+  // For now, we use a high-quality gradient animation.
 
-  @override
-  void initState() {
-    super.initState();
-  }
-
-  @override
-  void dispose() {
-    super.dispose();
-  }
-
-  Future<void> _signInWithGoogle() async {
+  Future<void> _handleGoogleSignIn() async {
     setState(() {
       _isLoading = true;
-      _errorMessage = null;
+      _statusText = "Connecting to inviter..."; // 1. Set Context
     });
+    
+    // 2. Artificial Delay (Crucial for psychology)
+    // This gives the user time to read the text before the system alert pops up.
+    await Future.delayed(const Duration(milliseconds: 1500));
+
+    // 3. UX FIX: Check clipboard for deferred invite link
+    // Now the user thinks: "Ah, it's pasting the invite code!"
+    try {
+      await ref.read(deepLinkServiceProvider).checkDeferredInvite()
+          .timeout(const Duration(seconds: 2));
+    } catch (_) {
+      // Ignore timeouts/errors - proceed to login
+    }
 
     try {
-      final authService = ref.read(authServiceProvider);
-      final result = await authService.signInWithGoogle();
-      
-      if (result != null && mounted) {
-        HapticFeedback.mediumImpact();
+      final user = await ref.read(authServiceProvider).signInWithGoogle();
+      if (user != null && mounted) {
+        // Navigation is handled by Router redirect logic
       }
     } catch (e) {
-      debugPrint('Google Sign-In Error: $e');
+      debugPrint('Auth Error: $e');
       if (mounted) {
-        setState(() => _errorMessage = 'Google sign-in failed. Please try again.');
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Sign in failed: $e')), // Friendly error needed
+        );
       }
     } finally {
-      if (mounted) setState(() => _isLoading = false);
+      if (mounted) setState(() {
+        _isLoading = false;
+        _statusText = null;
+      });
     }
   }
 
-  Future<void> _signInWithApple() async {
+  Future<void> _handleAppleSignIn() async {
     setState(() {
       _isLoading = true;
-      _errorMessage = null;
+      _statusText = "Connecting to inviter...";
     });
 
+    // Artificial Delay
+    await Future.delayed(const Duration(milliseconds: 1500));
+
+    // UX FIX: Check clipboard for deferred invite link
     try {
-      final authService = ref.read(authServiceProvider);
-      final result = await authService.signInWithApple();
-      
-      if (result != null && mounted) {
-        HapticFeedback.mediumImpact();
+      await ref.read(deepLinkServiceProvider).checkDeferredInvite()
+          .timeout(const Duration(seconds: 2));
+    } catch (_) {
+      // Ignore timeouts/errors
+    }
+
+    try {
+      final user = await ref.read(authServiceProvider).signInWithApple();
+      if (user != null && mounted) {
+        // Navigation handled by Router
       }
     } catch (e) {
-      setState(() => _errorMessage = 'Apple sign-in failed. Please try again.');
+       debugPrint('Auth Error: $e');
     } finally {
-      if (mounted) setState(() => _isLoading = false);
+      if (mounted) setState(() {
+        _isLoading = false;
+        _statusText = null;
+      });
     }
   }
-
-
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: AppColors.vibeBackground,
-      body: SafeArea(
-        child: Stack(
-          children: [
-            // Animated background gradient
-            Positioned.fill(
-              child: Container(
-                decoration: BoxDecoration(
-                  gradient: RadialGradient(
-                    center: Alignment.topCenter,
-                    radius: 1.5,
-                    colors: [
-                      AppColors.vibePrimary.withOpacity(0.15),
-                      AppColors.vibeBackground,
-                    ],
-                  ),
+      backgroundColor: Colors.black, // Dark entry
+      body: Stack(
+        fit: StackFit.expand,
+        children: [
+          // 1. DYNAMIC BACKGROUND
+          // Placeholder for high-res video: "Life happening"
+          // Falling back to an animated gradient mesh
+          // _buildVideoBackground(), OR
+          _buildAnimatedMeshBackground(),
+
+          // 2. DARKENING OVERLAY (Gradient from bottom)
+          Positioned.fill(
+            child: DecoratedBox(
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  begin: Alignment.topCenter,
+                  end: Alignment.bottomCenter,
+                  colors: [
+                    Colors.black.withOpacity(0.0), // Clear top
+                    Colors.black.withOpacity(0.3),
+                    Colors.black.withOpacity(0.8), // Dark bottom for buttons
+                  ],
+                  stops: const [0.0, 0.6, 1.0],
                 ),
               ),
             ),
-            
-            // Main content
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 32),
+          ),
+
+          // 3. CONTENT
+          SafeArea(
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 24.0, vertical: 32.0),
               child: Column(
+                mainAxisAlignment: MainAxisAlignment.end,
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  const Spacer(flex: 2),
-                  
-                  // Logo and title (instant - no animation)
-                  _buildHeader(),
-                  
-                  const Spacer(flex: 1),
-                  
-                  // Auth buttons (instant - no animation)
-                  _buildAuthButtons(),
-                  
-                  const SizedBox(height: 24),
-                  
-                  // Error message
-                  if (_errorMessage != null)
-                    Container(
-                      padding: const EdgeInsets.all(12),
-                      decoration: BoxDecoration(
-                        color: Colors.red.withOpacity(0.1),
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                      child: Row(
-                        children: [
-                          const Icon(Icons.error_outline, color: Colors.red, size: 20),
-                          const SizedBox(width: 8),
-                          Expanded(
-                            child: Text(
-                              _errorMessage!,
-                              style: const TextStyle(color: Colors.red, fontSize: 14),
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  
-                  const Spacer(flex: 1),
-                  
-                  // Terms and privacy
-                  _buildFooter(),
-                  
-                  const SizedBox(height: 16),
+                   const Spacer(),
+                   
+                   // Hero Text
+                   Text(
+                     'Real friends.\nReal life.',
+                     style: AppTypography.displayLarge.copyWith(
+                       color: Colors.white,
+                       height: 1.1,
+                       shadows: [
+                         Shadow(
+                           color: Colors.black.withOpacity(0.5),
+                           offset: const Offset(0, 2),
+                           blurRadius: 10,
+                         ),
+                       ],
+                     ),
+                   ),
+                   
+                   const SizedBox(height: 16),
+                   
+                   Text(
+                     'No filters. No feed. Just your squad.',
+                     style: AppTypography.bodyLarge.copyWith(
+                       color: Colors.white.withOpacity(0.9),
+                       fontSize: 18,
+                     ),
+                   ),
+                   
+                   const SizedBox(height: 48),
+
+                   // AUTH BUTTONS
+                   if (_isLoading)
+                     Center(
+                       child: Column(
+                         mainAxisSize: MainAxisSize.min,
+                         children: [
+                           const CircularProgressIndicator(color: Colors.white),
+                           if (_statusText != null) ...[
+                             const SizedBox(height: 16),
+                             Text(
+                               _statusText!,
+                               style: AppTypography.bodyMedium.copyWith(
+                                 color: Colors.white.withOpacity(0.8),
+                                 fontSize: 14,
+                                 fontWeight: FontWeight.w500,
+                               ),
+                             ),
+                           ],
+                         ],
+                       ),
+                     )
+                   else ...[
+                     _buildAuthButton(
+                       label: 'Continue with Apple',
+                       icon: AppIcons.apple,
+                       backgroundColor: Colors.white,
+                       textColor: Colors.black,
+                       onPressed: _handleAppleSignIn,
+                     ),
+                     const SizedBox(height: 16),
+                     _buildAuthButton(
+                       label: 'Continue with Google',
+                       icon: AppIcons.google, 
+                       backgroundColor: Colors.white.withOpacity(0.15),
+                       textColor: Colors.white,
+                       onPressed: _handleGoogleSignIn,
+                       isGlass: true,
+                     ),
+                   ],
+                   
+                   const SizedBox(height: 24),
+                   
+                   // Terms
+                   Center(
+                     child: Text(
+                       'By continuing, you agree to our Terms & Privacy Policy.',
+                       textAlign: TextAlign.center,
+                       style: AppTypography.caption.copyWith(
+                         color: Colors.white.withOpacity(0.5),
+                       ),
+                     ),
+                   ),
                 ],
               ),
             ),
-            
-            // Loading overlay
-            if (_isLoading)
-              Container(
-                color: Colors.black54,
-                child: const Center(
-                  child: CircularProgressIndicator(
-                    color: AppColors.vibePrimary,
-                  ),
-                ),
-              ),
-          ],
-        ),
+          ),
+        ],
       ),
     );
   }
 
-  Widget _buildHeader() {
-    return Column(
-      children: [
-        // App icon/logo
-        Container(
-          width: 120,
-          height: 120,
-          decoration: BoxDecoration(
-            gradient: LinearGradient(
-              begin: Alignment.topLeft,
-              end: Alignment.bottomRight,
-              colors: [
-                AppColors.vibePrimary,
-                AppColors.vibeSecondary,
-              ],
-            ),
-            shape: BoxShape.circle,
-            boxShadow: [
-              BoxShadow(
-                color: AppColors.vibePrimary.withOpacity(0.4),
-                blurRadius: 30,
-                spreadRadius: 5,
-              ),
-            ],
-          ),
-          child: const Icon(
-            Icons.waves_rounded,
-            size: 64,
-            color: Colors.white,
-          ),
-        ),
-        const SizedBox(height: 32),
-        
-        // App name (KEEP)
-        const Text(
-          'Nock',
-          style: TextStyle(
-            fontSize: 48,
-            fontWeight: FontWeight.bold,
-            color: Colors.white,
-            letterSpacing: -1,
-          ),
-        ),
-        // Tagline removed (KILL - visual noise per UX protocol)
-      ],
-    );
-  }
-
-  Widget _buildAuthButtons() {
-    return Column(
-      children: [
-        // Apple Sign-In (iOS only, shown first on iOS - KEEP)
-        if (Platform.isIOS) ...[
-          _buildAuthButton(
-            label: 'Continue with Apple',
-            icon: Icons.apple,
-            backgroundColor: Colors.white,
-            textColor: Colors.black,
-            onTap: _signInWithApple,
-          ),
-          const SizedBox(height: 12),
-        ],
-        
-        // Google Sign-In (Primary on Android - KEEP)
-        _buildAuthButton(
-          label: 'Continue with Google',
-          icon: null,
-          customIcon: _buildGoogleIcon(),
-          backgroundColor: Colors.white,
-          textColor: Colors.black87,
-          onTap: _signInWithGoogle,
-        ),
-        
-        // Progressive Disclosure: "More options" on Android (HIDE secondary auth)
-        if (Platform.isAndroid) ...[
-          const SizedBox(height: 16),
-          if (_showMoreOptions) ...[
-            // Revealed: Apple button
-            _buildAuthButton(
-              label: 'Continue with Apple',
-              icon: Icons.apple,
-              backgroundColor: Colors.white,
-              textColor: Colors.black,
-              onTap: _signInWithApple,
-            ),
-          ] else ...[
-            // "More options" text button
-            GestureDetector(
-              onTap: () => setState(() => _showMoreOptions = true),
-              child: Text(
-                'More sign-in options',
-                style: TextStyle(
-                  color: Colors.white.withOpacity(0.5),
-                  fontSize: 14,
-                  decoration: TextDecoration.underline,
-                  decorationColor: Colors.white.withOpacity(0.3),
-                ),
-              ),
-            ),
+  Widget _buildAnimatedMeshBackground() {
+    // A simplified placeholder for a "Mesmerizing" background
+    // In production, this would be a looping video or Rive animation.
+    return Container(
+      decoration: const BoxDecoration(
+        gradient: LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [
+             Color(0xFF6B2CF5), // Purple
+             Color(0xFF2C5CF5), // Blue
+             Color(0xFF000000), // Black
           ],
-        ],
-      ],
+        ),
+      ),
+      child: BackdropFilter(
+        filter: ImageFilter.blur(sigmaX: 50, sigmaY: 50),
+        child: Container(color: Colors.transparent),
+      ),
     );
   }
 
   Widget _buildAuthButton({
-    required String label,
-    IconData? icon,
-    Widget? customIcon,
-    required Color backgroundColor,
-    required Color textColor,
-    Color? borderColor,
-    required VoidCallback onTap,
+    required String label, 
+    required PhosphorIconData icon, 
+    required Color backgroundColor, 
+    required Color textColor, 
+    required VoidCallback onPressed,
+    bool isGlass = false,
   }) {
-    return GestureDetector(
-      onTap: _isLoading ? null : onTap,
-      child: Container(
+    // FIX: Use AppTypography.buttonText to ensure 'Inter' font is used
+    final buttonStyle = AppTypography.buttonText.copyWith(
+      color: textColor,
+      // Ensure specific overrides for this screen if needed
+      fontWeight: FontWeight.w600, 
+    );
+
+    final buttonChild = Row(
+      mainAxisAlignment: MainAxisAlignment.center,
+      children: [
+        AppIcon(icon, color: textColor, size: 28),
+        const SizedBox(width: 12),
+        Text(
+          label,
+          style: buttonStyle, 
+        ),
+      ],
+    );
+
+    if (isGlass) {
+      return SizedBox(
         width: double.infinity,
-        padding: const EdgeInsets.symmetric(vertical: 16),
-        decoration: BoxDecoration(
-          color: backgroundColor,
-          borderRadius: BorderRadius.circular(14),
-          border: borderColor != null ? Border.all(color: borderColor) : null,
-          boxShadow: backgroundColor != Colors.transparent
-              ? [
-                  BoxShadow(
-                    color: Colors.black.withOpacity(0.1),
-                    blurRadius: 10,
-                    offset: const Offset(0, 4),
-                  ),
-                ]
-              : null,
+        height: 56,
+        child: GlassContainer(
+           borderRadius: 16,
+           backgroundColor: backgroundColor,
+           onTap: onPressed,
+           child: Center(child: buttonChild),
         ),
-        child: Row(
-          mainAxisAlignment: MainAxisAlignment.center,
-          mainAxisSize: MainAxisSize.min,  // Prevent overflow
-          children: [
-            if (customIcon != null) customIcon,
-            if (icon != null) Icon(icon, color: textColor, size: 24),
-            const SizedBox(width: 12),
-            Flexible(
-              child: Text(
-                label,
-                style: TextStyle(
-                  color: textColor,
-                  fontSize: 16,
-                  fontWeight: FontWeight.w600,
-                ),
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
+      );
+    }
 
-  Widget _buildGoogleIcon() {
-    // Simple Google "G" icon
-    return Container(
-      width: 24,
-      height: 24,
-      decoration: const BoxDecoration(
-        shape: BoxShape.circle,
-      ),
-      child: Center(
-        child: Text(
-          'G',
-          style: TextStyle(
-            fontSize: 18,
-            fontWeight: FontWeight.bold,
-            foreground: Paint()
-              ..shader = const LinearGradient(
-                colors: [
-                  Color(0xFF4285F4), // Blue
-                  Color(0xFF34A853), // Green
-                  Color(0xFFFBBC05), // Yellow
-                  Color(0xFFEA4335), // Red
-                ],
-              ).createShader(const Rect.fromLTWH(0, 0, 24, 24)),
-          ),
+    return SizedBox(
+      width: double.infinity,
+      height: 56,
+      child: ElevatedButton(
+        style: ElevatedButton.styleFrom(
+          backgroundColor: backgroundColor,
+          foregroundColor: textColor,
+          elevation: 0,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
         ),
-      ),
-    );
-  }
-
-  Widget _buildFooter() {
-    // Progressive Disclosure: Minimized footer - info icon reveals Terms/Privacy
-    return GestureDetector(
-      onTap: _showLegalBottomSheet,
-      child: Icon(
-        Icons.info_outline,
-        color: Colors.white.withOpacity(0.25),
-        size: 20,
-      ),
-    );
-  }
-
-  void _showLegalBottomSheet() {
-    showModalBottomSheet(
-      context: context,
-      backgroundColor: AppColors.surface,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
-      ),
-      builder: (context) => Container(
-        padding: const EdgeInsets.all(24),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Text(
-              'Legal',
-              style: TextStyle(
-                color: Colors.white,
-                fontSize: 18,
-                fontWeight: FontWeight.bold,
-              ),
-            ),
-            const SizedBox(height: 16),
-            ListTile(
-              leading: const Icon(Icons.description, color: Colors.white54),
-              title: const Text('Terms of Service', style: TextStyle(color: Colors.white)),
-              trailing: const Icon(Icons.chevron_right, color: Colors.white24),
-              onTap: () {
-                Navigator.pop(context);
-                // TODO: Navigate to Terms
-              },
-            ),
-            ListTile(
-              leading: const Icon(Icons.privacy_tip, color: Colors.white54),
-              title: const Text('Privacy Policy', style: TextStyle(color: Colors.white)),
-              trailing: const Icon(Icons.chevron_right, color: Colors.white24),
-              onTap: () {
-                Navigator.pop(context);
-                // TODO: Navigate to Privacy
-              },
-            ),
-            const SizedBox(height: 16),
-            Text(
-              'By continuing, you agree to our Terms and Privacy Policy.',
-              textAlign: TextAlign.center,
-              style: TextStyle(
-                color: Colors.white.withOpacity(0.4),
-                fontSize: 12,
-              ),
-            ),
-          ],
-        ),
+        onPressed: onPressed,
+        child: buttonChild,
       ),
     );
   }
 }
+

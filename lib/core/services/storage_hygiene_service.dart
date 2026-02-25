@@ -17,30 +17,32 @@ class StorageHygieneService {
     try {
       final tempDir = await getTemporaryDirectory();
       final dir = Directory(tempDir.path);
-      
+
       if (!await dir.exists()) return;
 
       final now = DateTime.now();
       int deletedCount = 0;
       int reclaimedBytes = 0;
-      
+
       await for (final entity in dir.list()) {
         if (entity is File) {
           final filename = p.basename(entity.path);
-          
+
           // Match files created by the ghost recording logic
           // Checks for both ghost prefix AND standard mp4 extension
           if (filename.startsWith(_ghostPrefix) && filename.endsWith('.mp4')) {
             try {
               final stat = await entity.stat();
-              
+
               // Delete if older than 24 hours (safety buffer for active sessions)
               if (now.difference(stat.modified) > _maxFileAge) {
                 final size = stat.size;
                 await entity.delete();
                 deletedCount++;
                 reclaimedBytes += size;
-                debugPrint("StorageHygiene: Deleted orphan file $filename (${(size / 1024 / 1024).toStringAsFixed(2)} MB)");
+                debugPrint(
+                  "StorageHygiene: Deleted orphan file $filename (${(size / 1024 / 1024).toStringAsFixed(2)} MB)",
+                );
               }
             } catch (e) {
               debugPrint("StorageHygiene: Failed to process $filename: $e");
@@ -48,9 +50,11 @@ class StorageHygieneService {
           }
         }
       }
-      
+
       if (deletedCount > 0) {
-        debugPrint("StorageHygiene: Cleanup complete. Removed $deletedCount files, reclaimed ${(reclaimedBytes / 1024 / 1024).toStringAsFixed(2)} MB.");
+        debugPrint(
+          "StorageHygiene: Cleanup complete. Removed $deletedCount files, reclaimed ${(reclaimedBytes / 1024 / 1024).toStringAsFixed(2)} MB.",
+        );
       }
     } catch (e) {
       debugPrint("StorageHygiene: Service error: $e");

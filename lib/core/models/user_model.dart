@@ -6,10 +6,10 @@ import '../constants/app_constants.dart';
 class UserModel {
   final String id;
   final String phoneNumber;
-  final String? email;  // For Google/Apple auth
+  final String? email; // For Google/Apple auth
   final String displayName;
-  final String searchName;  // Lowercase displayName for case-insensitive search
-  final String? username;  // Unique handle for invite links (e.g., @john_doe)
+  final String searchName; // Lowercase displayName for case-insensitive search
+  final String? username; // Unique handle for invite links (e.g., @john_doe)
   final String? avatarUrl;
   final List<String> squadIds;
   final List<String> friendIds;
@@ -19,9 +19,10 @@ class UserModel {
   final bool isPremium;
   final WidgetState? widgetState;
   final UserStatus status;
-  final String authProvider;  // 'phone', 'google', 'apple', 'guest'
-  final bool isGuest;  // True if using guest mode (limited features)
-  final List<String> blockedUserIds; // Safety: Blocked users will be filtered from feed
+  final String authProvider; // 'phone', 'google', 'apple', 'guest'
+  final bool isGuest; // True if using guest mode (limited features)
+  final List<String>
+  blockedUserIds; // Safety: Blocked users will be filtered from feed
 
   UserModel({
     required this.id,
@@ -51,14 +52,17 @@ class UserModel {
       phoneNumber: data['phoneNumber'] ?? '',
       email: data['email'],
       displayName: data['displayName'] ?? '',
-      searchName: data['searchName'] ?? (data['displayName'] ?? '').toString().toLowerCase(),
-      username: data['username'],  // Unique invite handle
+      searchName:
+          data['searchName'] ??
+          (data['displayName'] ?? '').toString().toLowerCase(),
+      username: data['username'], // Unique invite handle
       avatarUrl: data['avatarUrl'],
       squadIds: List<String>.from(data['squadIds'] ?? []),
       friendIds: List<String>.from(data['friendIds'] ?? []),
       fcmToken: data['fcmToken'],
       createdAt: (data['createdAt'] as Timestamp?)?.toDate() ?? DateTime.now(),
-      lastActive: (data['lastActive'] as Timestamp?)?.toDate() ?? DateTime.now(),
+      lastActive:
+          (data['lastActive'] as Timestamp?)?.toDate() ?? DateTime.now(),
       isPremium: data['isPremium'] ?? false,
       widgetState: data['widgetState'] != null
           ? WidgetState.fromMap(data['widgetState'])
@@ -98,10 +102,12 @@ class UserModel {
   /// Check if user has premium access (either paid or within trial period)
   bool get hasPremiumAccess {
     if (isPremium) return true;
-    
+
     // Reverse Trial: Grant premium to new users for trial period
     // uses createdAt timestamp from user registration
-    final trialExpiry = createdAt.add(Duration(days: AppConstants.reverseTrialDays));
+    final trialExpiry = createdAt.add(
+      Duration(days: AppConstants.reverseTrialDays),
+    );
     return DateTime.now().isBefore(trialExpiry);
   }
 
@@ -149,12 +155,7 @@ class UserModel {
 }
 
 /// User status states
-enum UserStatus {
-  online,
-  offline,
-  recording,
-  listening,
-}
+enum UserStatus { online, offline, recording, listening }
 
 /// Widget state for the home screen widget
 /// Denormalized data for efficient widget reads
@@ -168,16 +169,16 @@ class WidgetState {
   final List<double>? waveformData;
   final DateTime? timestamp;
   final bool isPlayed;
-  
+
   /// 📝 Transcription-First: First 50 chars of voice message
   /// Enables "glanceability" - users can read in meetings/class
   final String? transcriptionPreview;
-  
+
   /// 🎬 4-State Widget Protocol: Content type flags
   /// Enables widgets to show different UI for video/audio-only/photo+audio
-  final bool isVideo;       // True = Video vibe (show play overlay)
-  final bool isAudioOnly;   // True = Voice note only (show mic icon)
-  final String? videoUrl;   // For video deep linking
+  final bool isVideo; // True = Video vibe (show play overlay)
+  final bool isAudioOnly; // True = Voice note only (show mic icon)
+  final String? videoUrl; // For video deep linking
 
   WidgetState({
     this.latestVibeId,

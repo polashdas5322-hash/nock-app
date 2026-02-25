@@ -1,10 +1,15 @@
+import 'package:phosphor_flutter/phosphor_flutter.dart';
+import 'package:nock/core/theme/app_icons.dart';
+import 'package:nock/shared/widgets/app_icon.dart';
+
+import 'package:nock/core/utils/app_modal.dart';
+
 import 'dart:io';
 import 'dart:async';
 import 'dart:ui';
 import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:flutter/rendering.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:share_plus/share_plus.dart';
@@ -21,13 +26,11 @@ import 'package:nock/core/services/vibe_service.dart';
 import 'package:nock/core/services/transcription_service.dart';
 import 'package:nock/core/services/auth_service.dart';
 import 'package:nock/core/services/viral_video_service.dart';
-import 'package:nock/features/camera/domain/services/video_processing_service.dart';
 import 'package:nock/core/models/vibe_model.dart';
 import 'package:nock/shared/widgets/glass_container.dart';
 import 'package:nock/shared/widgets/aura_visualization.dart';
 import 'package:cached_network_image/cached_network_image.dart';
-import 'package:flutter_animate/flutter_animate.dart';
-import 'package:shared_preferences/shared_preferences.dart';
+import 'package:nock/features/camera/presentation/widgets/bioluminescent_orb.dart';
 
 /// Ghost Player Screen - Deep link view when tapping the widget
 /// Shows the photo with Aura visualization and voice playback
@@ -35,10 +38,13 @@ import 'package:shared_preferences/shared_preferences.dart';
 class PlayerScreen extends ConsumerStatefulWidget {
   final VibeModel? vibe;
   final String? vibeId;
+
   /// When true, auto-highlights reply button after playback (opens from notification)
   final bool fromNotification;
+
   /// List of vibes for horizontal swipe navigation (from Vault)
   final List<VibeModel>? vibesList;
+
   /// Starting index in vibesList
   final int? startIndex;
 
@@ -61,74 +67,55 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
   late Animation<double> _fadeAnimation;
   late AnimationController _pulseController;
   late Animation<double> _pulseAnimation;
-  
+
   // FIX: Subscription management
   StreamSubscription? _audioStateSubscription;
   StreamSubscription? _audioPositionSubscription;
-  
-  
-  
+
   // FIX: Store audio service reference for safe disposal
   AudioPlayer? _scopedAudioPlayer;
-  
+
   bool _isPlaying = false;
   bool _isBuffering = false; // NEW: Track buffering explicitly
   bool _hasPlayed = false;
-  bool _isReplying = false;
   double _playbackProgress = 0.0;
-  
+
   bool _isExportingVideo = false;
   double _exportProgress = 0.0;
-  
-  // FIX: Mutex for recording stop to prevent double-submit (User Tap + Timer)
-  bool _isStoppingReply = false;
 
   // For transcription display
   bool _showTranscription = false;
   String? _transcriptionText;
-  
+
   // Video player for video vibes
   VideoPlayerController? _videoController;
   bool _isVideoInitialized = false;
-  
-  
-  // INSTANT REPLY: Mic pre-warmed during playback
-  bool _micPreWarmed = false;
-  bool _showReplyFocus = false;  // Highlights reply after playback if from notification
-  
+
+
   // Vibe State
   VibeModel? _vibe;
   bool _isLoading = true;
   String? _error;
-  
+
   // TEXT REPLIES: Visual Whispers
   bool _isTextReplying = false;
   final TextEditingController _textReplyController = TextEditingController();
   final FocusNode _textReplyFocusNode = FocusNode();
-  
-  // REACTIONS: Quick Reactions widget rain
-  final List<FloatingEmoji> _floatingEmojis = [];
-  Timer? _emojiCleanupTimer;
-  
-  // SWIPE NAVIGATION: PageController for horizontal swipe through vibes list
-  PageController? _pageController;
+
+  // SWIPE NAVIGATION: Manual state-driven swipe (no PageController needed)
   int _currentVibeIndex = 0;
-  bool get _hasSwipeNavigation => widget.vibesList != null && widget.vibesList!.length > 1;
-  
+  bool get _hasSwipeNavigation =>
+      widget.vibesList != null && widget.vibesList!.length > 1;
+
   // FIX Issue 3: Track current vibe URL to cancel stale initializations
   String? _currentVibeUrl;
-
-  // NEW: Ghost Hints state (Progressive Disclosure)
-  bool _showGhostHints = false;
-  Timer? _ghostHintTimer;
-  static const String _ghostHintsSeenKey = 'player_ghost_hints_seen';
 
   // Voice Reply Preview State
   String? _pendingReplyPath; // Path of recorded audio awaiting confirmation
   bool _isPreviewingReply = false; // Is user in preview mode
   bool _isPlayingPreview = false; // Is preview audio currently playing
   AudioPlayer? _previewPlayer; // Player for preview playback
-  
+
   // Consistency: 15s limit for voice replies
   Timer? _recordingLimitTimer;
 
@@ -137,14 +124,12 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
     super.initState();
     // LIFECYCLE FIX: Register observer to pause media on background
     WidgetsBinding.instance.addObserver(this);
-    
+
     // NOTE: We no longer store _audioService. We use scoped provider on demand.
 
-    
-    // SWIPE NAVIGATION: Initialize PageController if vibesList provided
+    // SWIPE NAVIGATION: Initialize index if vibesList provided
     if (_hasSwipeNavigation) {
       _currentVibeIndex = widget.startIndex ?? 0;
-      _pageController = PageController(initialPage: _currentVibeIndex);
       // Set initial vibe from the list
       _vibe = widget.vibesList![_currentVibeIndex];
       _hasPlayed = !_hasAudioOrVideo(); // FIX: Immediate reply for image-only
@@ -164,7 +149,7 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
       });
     }
   }
-  
+
   Future<void> _fetchVibe(String id) async {
     try {
       final vibe = await ref.read(vibeServiceProvider).getVibeById(id);
@@ -190,31 +175,33 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
       }
     }
   }
-  
+
   /// SWIPE NAVIGATION: Handle page change when user swipes to different vibe
   void _onVibeChanged(int newIndex) {
     if (!_hasSwipeNavigation || newIndex == _currentVibeIndex) return;
-    
+
     // Stop current playback
+    // FIX: Mute immediately to prevent Zombie Audio on rapid swipes
+    _videoController?.setVolume(0.0);
     _videoController?.pause();
     _scopedAudioPlayer?.stop();
-    
+
     // Clean up video controller for previous vibe
     _videoController?.removeListener(_videoListener);
     _videoController?.dispose();
     _videoController = null;
     _isVideoInitialized = false;
-    
+
     // Reset playback state
     _isPlaying = false;
     _playbackProgress = 0.0;
-    
+
     setState(() {
       _currentVibeIndex = newIndex;
       _vibe = widget.vibesList![newIndex];
       _hasPlayed = !_hasAudioOrVideo(); // FIX: Immediate reply for image-only
     });
-    
+
     // Initialize media for new vibe
     if (_vibe!.isVideo && _vibe!.videoUrl != null) {
       _initVideoPlayer(_vibe!.videoUrl!);
@@ -228,28 +215,26 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
     // HYBRID: Auto-load transcription for "Read-First" intake
     _loadTranscription(silent: true);
   }
-  
+
   void _initAnimations() {
     _fadeController = AnimationController(
       duration: const Duration(milliseconds: 500),
       vsync: this,
     );
-    _fadeAnimation = Tween<double>(begin: 0.0, end: 1.0).animate(
-      CurvedAnimation(parent: _fadeController, curve: Curves.easeOut),
-    );
+    _fadeAnimation = Tween<double>(
+      begin: 0.0,
+      end: 1.0,
+    ).animate(CurvedAnimation(parent: _fadeController, curve: Curves.easeOut));
     _fadeController.forward();
-
-    // NEW: Trigger Ghost Hints after a short delay (Progressive Disclosure)
-    // Only show hints if user has never seen them before
-    _checkAndShowGhostHints();
 
     // Pulse animation for "Hold to Reply" hit (always running, applied conditionally)
     _pulseController = AnimationController(
       duration: const Duration(milliseconds: 1500),
       vsync: this,
     )..repeat(reverse: true);
-    
-    _pulseAnimation = Tween<double>(begin: 1.0, end: 1.02).animate( // Subtle 2% zoom pulse
+
+    _pulseAnimation = Tween<double>(begin: 1.0, end: 1.02).animate(
+      // Subtle 2% zoom pulse
       CurvedAnimation(parent: _pulseController, curve: Curves.easeInOut),
     );
 
@@ -267,33 +252,37 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
     // HYBRID: Auto-load transcription for "Read-First" intake
     _loadTranscription(silent: true);
   }
-  
+
   Future<void> _initVideoPlayer(String videoUrl) async {
     // FIX Issue 3: Track current URL to cancel stale initializations
     _currentVibeUrl = videoUrl;
-    
+
     // Claim Hardware Resource for Video
     if (_vibe != null) {
       ref.read(activeContentIdProvider.notifier).state = _vibe!.id;
     }
-    
+
     final controller = VideoPlayerController.networkUrl(Uri.parse(videoUrl));
     _videoController = controller; // Keep track for dispose()
 
     try {
       await controller.initialize();
-      
+
       // FIX: Ensure widget is mounted AND the controller is still the current one
       // AND the URL still matches the current target (Issue 3 - prevents stale init)
-      if (!mounted || _videoController != controller || _currentVibeUrl != videoUrl) return;
+      if (!mounted ||
+          _videoController != controller ||
+          _currentVibeUrl != videoUrl) {
+        return;
+      }
 
       // FIX Issue 5: Enable looping for short-form video content (TikTok/Locket style)
       controller.setLooping(true);
-      controller.setVolume(1.0); 
-      
+      controller.setVolume(1.0);
+
       // FIX: Listen to the controller for state (Buffering/Playing)
       controller.addListener(_videoListener);
-      
+
       if (mounted) {
         setState(() {
           _isVideoInitialized = true;
@@ -313,16 +302,16 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
   // New Listener Method for Video
   void _videoListener() {
     if (!mounted || _videoController == null) return;
-    
+
     // Check playback state via VideoPlayerValue
     final isPlaying = _videoController!.value.isPlaying;
     final isBuffering = _videoController!.value.isBuffering;
     final position = _videoController!.value.position;
     final duration = _videoController!.value.duration;
-    
+
     // FIX: Only show playing if actually playing AND not buffering
     final shouldShowPlaying = isPlaying && !isBuffering;
-    
+
     // Update state if anything changed
     if (_isPlaying != shouldShowPlaying || _isBuffering != isBuffering) {
       if (mounted) {
@@ -332,7 +321,7 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
         });
       }
     }
-    
+
     // Handle progress updates
     if (duration.inMilliseconds > 0) {
       if (mounted) {
@@ -345,12 +334,12 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
     // Check completion
     // FIX Issue 2: Mark as played at 50% or after 3 seconds (relaxed from 90%)
     // This matches user attention spans for short-form content
-    final percentComplete = duration.inMilliseconds > 0 
-        ? position.inMilliseconds / duration.inMilliseconds 
+    final percentComplete = duration.inMilliseconds > 0
+        ? position.inMilliseconds / duration.inMilliseconds
         : 0.0;
     final threeSecondsWatched = position.inMilliseconds >= 3000;
-        
-    if (duration.inMilliseconds > 0 && 
+
+    if (duration.inMilliseconds > 0 &&
         (percentComplete > 0.5 || threeSecondsWatched)) {
       if (!_hasPlayed) {
         setState(() {
@@ -360,19 +349,19 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
       }
     }
   }
-  
+
   void _onVideoPositionChanged() {
     if (!mounted || _videoController == null) return;
-    
+
     final position = _videoController!.value.position;
     final duration = _videoController!.value.duration;
-    
+
     if (duration.inMilliseconds > 0) {
       setState(() {
         _playbackProgress = position.inMilliseconds / duration.inMilliseconds;
       });
     }
-    
+
     // Check if video completed
     if (_videoController!.value.position >= _videoController!.value.duration &&
         _videoController!.value.duration.inMilliseconds > 0) {
@@ -391,40 +380,25 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
   void dispose() {
     // LIFECYCLE FIX: Remove observer
     WidgetsBinding.instance.removeObserver(this);
-    
-    // FIX: Stop recording if user is currently replying (prevents mic lock on Android)
-    if (_isReplying) {
-      ref.read(recordingStateProvider.notifier).stopRecording().then((_) {
-        debugPrint('Background recording stopped safely during dispose.');
-      }).catchError((e) {
-        debugPrint('Error cleaning up recording on dispose: $e');
-      });
-    }
 
-    _recordingLimitTimer?.cancel();
-    
+
+
     // FIX: Cancel subscriptions to prevent leaks
     _audioStateSubscription?.cancel();
     _audioPositionSubscription?.cancel();
-    
+
     _fadeController.dispose();
     _pulseController.dispose();
     _videoController?.removeListener(_videoListener);
     _videoController?.dispose();
-    
-    // SWIPE NAVIGATION: Dispose PageController
-    _pageController?.dispose();
-    
+
     // NOTE: scopedAudioPlayerProvider is autoDispose, so we don't need manual cleanup
     // unless we want to be explicit.
-    _emojiCleanupTimer?.cancel();
+
     _textReplyController.dispose();
     _textReplyFocusNode.dispose();
-    _ghostHintTimer?.cancel();
-    
-    // FIX: Dispose preview player
-    _previewPlayer?.dispose();
-    
+
+
     super.dispose();
   }
 
@@ -435,7 +409,8 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
   void didChangeAppLifecycleState(AppLifecycleState state) {
     // 1. App Paused or Inactive: Safe Lifecycle Management
     // Trigger on inactive (earlier) to gain extra milliseconds on iOS
-    if (state == AppLifecycleState.paused || state == AppLifecycleState.inactive) {
+    if (state == AppLifecycleState.paused ||
+        state == AppLifecycleState.inactive) {
       // Force pause video
       _videoController?.pause();
 
@@ -443,14 +418,16 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
       // FIX: Stop the SCOPED audio service (which is actually playing), not just the global one
       _scopedAudioPlayer?.pause();
       ref.read(audioServiceProvider).pause();
-      
+
       // Force STOP active audio (if any) by clearing global ID
       ref.read(activeContentIdProvider.notifier).state = null;
-      
+
       if (mounted) {
         setState(() => _isPlaying = false);
       }
-      debugPrint('PlayerScreen: Stopped audio on app background to release resources');
+      debugPrint(
+        'PlayerScreen: Stopped audio on app background to release resources',
+      );
     }
   }
 
@@ -474,13 +451,16 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
 
     // FIX: Assign subscription to variable
     // FIX: Access direct `AudioPlayer` getters on the scoped instance
-    _audioPositionSubscription = audioService.onPositionChanged.listen((position) {
+    _audioPositionSubscription = audioService.onPositionChanged.listen((
+      position,
+    ) {
       if (mounted) {
         setState(() {
           final totalDurationMs = (_vibe!.audioDuration * 1000).toDouble();
           // SAFETY: Check for zero to prevent NaN crash
           if (totalDurationMs > 0) {
-            _playbackProgress = (position.inMilliseconds / totalDurationMs).clamp(0.0, 1.0);
+            _playbackProgress = (position.inMilliseconds / totalDurationMs)
+                .clamp(0.0, 1.0);
           } else {
             _playbackProgress = 0.0;
           }
@@ -497,15 +477,12 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
         if (_isPlaying != isActuallyPlaying) {
           setState(() => _isPlaying = isActuallyPlaying);
         }
-        
+
         if (state.name == 'completed') {
           setState(() {
             _isPlaying = false;
             _hasPlayed = true;
-            // INSTANT REPLY: Show reply focus if opened from notification
-            if (widget.fromNotification) {
-              _showReplyFocus = true;
-            }
+
           });
           // Mark as played
           ref.read(vibeServiceProvider).markAsPlayed(_vibe!.id);
@@ -513,11 +490,7 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
       }
     });
 
-    // INSTANT REPLY: Pre-warm microphone permission during playback
-    // This eliminates the permission dialog delay when user taps reply
-    if (!_micPreWarmed) {
-      _preWarmMicrophone();
-    }
+
 
     // 🔴 CRITICAL FIX 1: Ensure audio URL is NOT empty to prevent FileNotFoundException
     // This happens for video vibes or vibes where audio upload failed.
@@ -532,213 +505,65 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
 
     await audioService.play(UrlSource(_vibe!.audioUrl));
   }
-  
-  /// Pre-warm microphone: Check permission in background during playback
-  /// User sees no dialog - just prepares the system for instant recording
-  Future<void> _preWarmMicrophone() async {
-    try {
-      final recorder = AudioRecorder();
-      final hasPermission = await recorder.hasPermission();
-      if (mounted) {
-        setState(() => _micPreWarmed = hasPermission);
-      }
-      debugPrint('PlayerScreen: Mic pre-warmed, hasPermission: $hasPermission');
-    } catch (e) {
-      debugPrint('PlayerScreen: Mic pre-warm failed: $e');
-    }
-  }
+
+
 
   void _togglePlayback() async {
     HapticFeedback.selectionClick();
-    
+
     // FIX: Video vibes - explicit handling with defensive checks
     if (_vibe != null && _vibe!.isVideo) {
       // DEFENSIVE: Check if controller is initialized before attempting toggle
       if (_videoController != null && _videoController!.value.isInitialized) {
         // Claim resource if not already mine (Important for resuming video)
         ref.read(activeContentIdProvider.notifier).state = _vibe!.id;
-        
+
         if (_isPlaying) {
           _videoController!.pause();
           setState(() => _isPlaying = false);
         } else {
-          // If video ended, seek to start
-          if (_videoController!.value.position >= _videoController!.value.duration) {
+          // FIX: Robust Replay Logic for Video
+          // If video is near the end (within 1s or >95%), seek to start
+          final pos = _videoController!.value.position;
+          final dur = _videoController!.value.duration;
+
+          bool isAtEnd = false;
+          if (dur.inMilliseconds > 0) {
+            isAtEnd = pos.inMilliseconds >= dur.inMilliseconds - 1000;
+          }
+
+          if (isAtEnd) {
             await _videoController!.seekTo(Duration.zero);
           }
-          _videoController!.play();
+          await _videoController!.play();
           setState(() => _isPlaying = true);
         }
       }
       // CRITICAL: Stop here - do NOT fall through to audio service
       return;
     }
-    
+
     // Photo vibes: Control AudioService
     final audioService = ref.read(scopedAudioPlayerProvider(_vibe!.id));
-    
+
     // Claim resource if not already mine
     ref.read(activeContentIdProvider.notifier).state = _vibe!.id;
-    
+
     if (_isPlaying) {
       await audioService.pause();
       setState(() => _isPlaying = false);
     } else {
+      // FIX: Robust Replay Logic for Audio (Seek to Zero)
+      // Check _hasPlayed flag which is set in state listener on completion
+      if (_hasPlayed || _playbackProgress >= 0.95) {
+        await audioService.seek(Duration.zero);
+        setState(() => _hasPlayed = false); // Reset flag
+      }
       await audioService.resume();
       setState(() => _isPlaying = true);
     }
   }
 
-  void _startReply() {
-    // FIX: CRITICAL - Pause all media BEFORE starting recording
-    // This prevents the microphone from capturing speaker output (feedback loop)
-    // Clear active ID stops all players
-    ref.read(activeContentIdProvider.notifier).state = null;
-    _videoController?.pause();
-    setState(() => _isPlaying = false);
-    
-    // Now start recording
-    setState(() => _isReplying = true);
-    ref.read(recordingStateProvider.notifier).startRecording();
-    HapticFeedback.heavyImpact();
-
-    // Consistency: Enforce 15s Limit (Sync with Camera)
-    _recordingLimitTimer?.cancel();
-    _recordingLimitTimer = Timer(const Duration(seconds: 15), () {
-      if (_isReplying && mounted) {
-        _stopReply(); // Automatically stop recording
-        HapticFeedback.heavyImpact(); // Alert user it stopped
-      }
-    });
-  }
-
-  Future<void> _stopReply() async {
-    // FIX: Mutex to prevent race condition between Timer and Manual Stop
-    if (_isStoppingReply) return;
-    _isStoppingReply = true;
-    
-    _recordingLimitTimer?.cancel();
-    
-    try {
-      final path = await ref.read(recordingStateProvider.notifier).stopRecording();
-      
-      if (path != null) {
-        // Enter preview mode instead of sending immediately
-        setState(() {
-          _pendingReplyPath = path;
-          _isPreviewingReply = true;
-        });
-        HapticFeedback.mediumImpact();
-      }
-    } catch (e) {
-      debugPrint('Error stopping recorder: $e');
-    } catch (e) {
-      debugPrint('Error stopping recorder: $e');
-    } finally {
-      _isStoppingReply = false; // Release mutex
-      if (mounted) {
-        setState(() => _isReplying = false);
-      }
-    }
-  }
-  
-  /// Play the recorded audio preview
-  Future<void> _playPreview() async {
-    if (_pendingReplyPath == null) return;
-    
-    try {
-      _previewPlayer ??= AudioPlayer();
-      await _previewPlayer!.play(DeviceFileSource(_pendingReplyPath!));
-      setState(() => _isPlayingPreview = true);
-      
-      // Listen for completion
-      _previewPlayer!.onPlayerComplete.listen((_) {
-        if (mounted) {
-          setState(() => _isPlayingPreview = false);
-        }
-      });
-    } catch (e) {
-      debugPrint('Error playing preview: $e');
-    }
-  }
-  
-  /// Pause the preview playback
-  Future<void> _pausePreview() async {
-    await _previewPlayer?.pause();
-    setState(() => _isPlayingPreview = false);
-  }
-  
-  /// Cancel the pending reply
-  Future<void> _cancelReply() async {
-    // Stop preview if playing
-    await _previewPlayer?.stop();
-    
-    // Delete the recorded file
-    if (_pendingReplyPath != null) {
-      try {
-        await File(_pendingReplyPath!).delete();
-      } catch (_) {}
-    }
-    
-    setState(() {
-      _pendingReplyPath = null;
-      _isPreviewingReply = false;
-      _isPlayingPreview = false;
-    });
-    HapticFeedback.lightImpact();
-  }
-  
-  /// Confirm and send the reply
-  Future<void> _confirmSendReply() async {
-    if (_pendingReplyPath == null) return;
-    
-    // Stop preview if playing
-    await _previewPlayer?.stop();
-    
-    final path = _pendingReplyPath!;
-    
-    // Reset preview state
-    setState(() {
-      _pendingReplyPath = null;
-      _isPreviewingReply = false;
-      _isPlayingPreview = false;
-    });
-    
-    // Send the reply
-    try {
-      await ref.read(vibeServiceProvider).replyToVibe(
-        originalVibeId: _vibe!.id,
-        receiverId: _vibe!.senderId,
-        audioFile: File(path),
-        audioDuration: ref.read(recordingDurationProvider),
-        waveformData: ref.read(waveformDataProvider),
-      );
-
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Reply sent!'),
-            backgroundColor: AppColors.success,
-          ),
-        );
-        
-        if (context.canPop()) {
-          context.pop();
-        } else {
-          context.go(AppRoutes.home);
-        }
-      }
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Failed to send reply: $e'),
-            backgroundColor: AppColors.error,
-          ),
-        );
-      }
-    }
-  }
 
   @override
   Widget build(BuildContext context) {
@@ -750,7 +575,7 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
         ),
       );
     }
-    
+
     if (_error != null || _vibe == null) {
       return Scaffold(
         backgroundColor: AppColors.background,
@@ -758,11 +583,13 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              const Icon(Icons.error_outline, color: AppColors.error, size: 48),
+              AppIcon(AppIcons.error, color: AppColors.error, size: 48),
               const SizedBox(height: 16),
               Text(
                 _error ?? "Vibe unavailable",
-                style: AppTypography.bodyMedium.copyWith(color: AppColors.textSecondary),
+                style: AppTypography.bodyMedium.copyWith(
+                  color: AppColors.textSecondary,
+                ),
               ),
               const SizedBox(height: 24),
               ElevatedButton(
@@ -786,14 +613,15 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
     // Determine content type
     final bool isAudioOnly = _vibe!.isAudioOnly;
     final bool isVideo = _vibe!.isVideo && _vibe!.videoUrl != null;
-    
+
     // FIX: Prioritize showing image if it exists, even if isAudioOnly flag is set
     // This prevents "Photo Only" vibes from appearing as "Audio Only" if flags are misconfigured
-    final bool hasImage = !isVideo && _vibe!.imageUrl != null && _vibe!.imageUrl!.isNotEmpty;
+    final bool hasImage =
+        !isVideo && _vibe!.imageUrl != null && _vibe!.imageUrl!.isNotEmpty;
 
     // ZOMBIE UI PREVENTION: Watch the scoped player to keep it alive
     ref.watch(scopedAudioPlayerProvider(_vibe!.id));
-    
+
     // LISTEN for focus loss (Active ID changed -> Stop/Pause)
     ref.listen(activeContentIdProvider, (prev, next) {
       if (next != _vibe!.id) {
@@ -805,154 +633,124 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
       }
     });
 
-
     return Scaffold(
       backgroundColor: AppColors.background,
-      resizeToAvoidBottomInset: false, // FIX: Prevent keyboard from squashing the "Portal"
-      body: Builder( // WRAP IN BUILDER TO USE CONTEXT SAFELY
+      resizeToAvoidBottomInset:
+          false, // FIX: Prevent keyboard from squashing the "Portal"
+      body: Builder(
+        // WRAP IN BUILDER TO USE CONTEXT SAFELY
         builder: (context) {
           // REDUNDANT LISTENERS REMOVED: (ref.watch/ref.listen was here and caused crash)
-          
+
           return LayoutBuilder(
             builder: (context, constraints) {
-          final scale = constraints.maxWidth / 360;
-          
-          return GestureDetector(
-            // Hold anywhere to reply (after playback)
-            onTap: () {
-              if (_isTextReplying) {
-                _textReplyFocusNode.unfocus();
-                setState(() => _isTextReplying = false);
-              } else {
-                _togglePlayback();
-              }
-            },
-            onDoubleTap: () => _addQuickReaction('❤️'),
-            // SWIPE NAVIGATION: Horizontal drag to navigate between vibes
-            onHorizontalDragEnd: _hasSwipeNavigation ? (details) {
-              final velocity = details.primaryVelocity ?? 0;
-              if (velocity > 300 && _currentVibeIndex > 0) {
-                // Swipe right -> previous vibe
-                _onVibeChanged(_currentVibeIndex - 1);
-              } else if (velocity < -300 && _currentVibeIndex < widget.vibesList!.length - 1) {
-                // Swipe left -> next vibe
-                _onVibeChanged(_currentVibeIndex + 1);
-              }
-            } : null,
-            // VERTICAL DISMISS: Flick up or down to close the player
-            onVerticalDragEnd: (details) {
-              final velocity = details.primaryVelocity ?? 0;
-              if (velocity.abs() > 500) {
-                context.pop();
-              }
-            },
-            child: Stack(
-              fit: StackFit.expand,
-              children: [
-                // ═══════════════════════════════════════════════════════════════
-                // BACKGROUND: Different for each content type
-                // ═══════════════════════════════════════════════════════════════
-                if (isVideo && _isVideoInitialized && _videoController != null)
-                  _buildVideoBackground(scale)
-                else if (isVideo && !_isVideoInitialized && _vibe!.imageUrl != null && _vibe!.imageUrl!.isNotEmpty)
-                  _buildImageBackground(scale)
-                else if (hasImage)
-                  _buildImageBackground(scale)
-                else if (isAudioOnly)
-                  _buildAudioOnlyBlurredBackground(scale)
-                else
-                  _buildCyberpunkBackground(scale),
+              final scale = constraints.maxWidth / 360;
 
+              return GestureDetector(
+                // Hold anywhere to reply (after playback)
+                onTap: () {
+                  if (_isTextReplying) {
+                    _textReplyFocusNode.unfocus();
+                    setState(() => _isTextReplying = false);
+                  } else {
+                    _togglePlayback();
+                  }
+                },
 
+                // SWIPE NAVIGATION: Horizontal drag to navigate between vibes
+                // FIX: Disable swipe during recording to prevent Ghost Recording crash
+                onHorizontalDragEnd:
+                    (_hasSwipeNavigation && !_isTextReplying)
+                    ? (details) {
+                        final velocity = details.primaryVelocity ?? 0;
+                        if (velocity > 300 && _currentVibeIndex > 0) {
+                          // Swipe right -> previous vibe
+                          _onVibeChanged(_currentVibeIndex - 1);
+                        } else if (velocity < -300 &&
+                            _currentVibeIndex < widget.vibesList!.length - 1) {
+                          // Swipe left -> next vibe
+                          _onVibeChanged(_currentVibeIndex + 1);
+                        }
+                      }
+                    : null,
+                // VERTICAL DISMISS: Flick up or down to close the player
+                onVerticalDragEnd: (details) {
+                  final velocity = details.primaryVelocity ?? 0;
+                  if (velocity.abs() > 500) {
+                    context.pop();
+                  }
+                },
+                child: Stack(
+                  fit: StackFit.expand,
+                  children: [
+                    // ═══════════════════════════════════════════════════════════════
+                    // BACKGROUND: Different for each content type
+                    // ═══════════════════════════════════════════════════════════════
+                    if (isVideo &&
+                        _isVideoInitialized &&
+                        _videoController != null)
+                      _buildVideoBackground(scale)
+                    else if (isVideo &&
+                        !_isVideoInitialized &&
+                        _vibe!.imageUrl != null &&
+                        _vibe!.imageUrl!.isNotEmpty)
+                      _buildImageBackground(scale)
+                    else if (hasImage)
+                      _buildImageBackground(scale)
+                    else if (isAudioOnly)
+                      _buildAudioOnlyBlurredBackground(scale)
+                    else
+                      _buildCyberpunkBackground(scale),
 
-                // ═══════════════════════════════════════════════════════════════
-                // NEW: GHOST HINTS (Onboarding discovery)
-                // ═══════════════════════════════════════════════════════════════
-                if (_showGhostHints)
-                  _buildGhostHints(scale),
+                    // ═══════════════════════════════════════════════════════════════
+                    // MAIN CONTENT OVERLAY (Safe Area Column)
+                    // ═══════════════════════════════════════════════════════════════
+                    SafeArea(
+                      child: Column(
+                        children: [
+                          _buildLocketTopBar(statusText, statusColor, scale),
 
-                // ═══════════════════════════════════════════════════════════════
-                // NEW: EMOJI RAIN (Full Screen)
-                // ═══════════════════════════════════════════════════════════════
-                IgnorePointer(
-                  child: Stack(
-                    fit: StackFit.expand,
-                    children: _floatingEmojis.map((e) => Positioned(
-                      left: e.x,
-                      top: e.y,
-                      child: Opacity(
-                        opacity: e.opacity.clamp(0.0, 1.0),
-                        child: Text(
-                          e.emoji,
-                          style: TextStyle(fontSize: 32 * scale),
-                        ),
+                          if (_hasSwipeNavigation) _buildPageIndicator(scale),
+
+                          const Spacer(flex: 1),
+
+                          if (isAudioOnly)
+                            _buildCenteredAvatar(scale)
+                          else
+                            const SizedBox.shrink(),
+
+                          const Spacer(flex: 1),
+
+                          if (_hasAudioOrVideo())
+                            _buildPlaybackUI(scale)
+                          else
+                            _buildImageOnlyUI(scale),
+
+                          SizedBox(height: 40 * scale),
+                        ],
                       ),
-                    )).toList(),
-                  ),
+                    ),
+
+                    // ═══════════════════════════════════════════════════════════════
+                    // NEW: HYBRID PORTAL OVERLAYS (Renamed: "The Sticker Layer")
+                    // Placed LAST to ensure it renders ON TOP of the avatar/video
+                    // ═══════════════════════════════════════════════════════════════
+                    _buildPortalOverlays(scale),
+                  ],
                 ),
-
-                // ═══════════════════════════════════════════════════════════════
-                // MAIN CONTENT OVERLAY (Safe Area Column)
-                // ═══════════════════════════════════════════════════════════════
-                SafeArea(
-                  child: Column(
-                    children: [
-                      _buildLocketTopBar(statusText, statusColor, scale),
-                      
-                      if (_hasSwipeNavigation)
-                        _buildPageIndicator(scale),
-
-                      const Spacer(flex: 1),
-
-                      if (isAudioOnly)
-                        _buildCenteredAvatar(scale)
-                      else
-                        const SizedBox.shrink(),
-
-                      const Spacer(flex: 1),
-
-                      if (_isReplying)
-                        RepaintBoundary(
-                          child: Consumer(
-                            builder: (context, ref, _) {
-                              final waveformData = ref.watch(waveformDataProvider);
-                              final recordingDuration = ref.watch(recordingDurationProvider);
-                              return _buildRecordingReplyUI(recordingDuration, waveformData, scale);
-                            },
-                          ),
-                        )
-                      else if (_hasAudioOrVideo())
-                        _buildPlaybackUI(scale)
-                      else
-                        _buildImageOnlyUI(scale),
-
-                      SizedBox(height: 40 * scale),
-                    ],
-                  ),
-                ),
-                
-                // ═══════════════════════════════════════════════════════════════
-                // NEW: HYBRID PORTAL OVERLAYS (Renamed: "The Sticker Layer")
-                // Placed LAST to ensure it renders ON TOP of the avatar/video
-                // ═══════════════════════════════════════════════════════════════
-                _buildPortalOverlays(scale),
-              ],
-            ),
+              );
+            },
           );
         },
-      );
-    },
-  ),
-);
+      ),
+    );
   }
 
   /// Dynamic status text based on current state
   /// SIMPLIFIED: When playing, show nothing (slider is the indicator)
   /// When not playing, show timestamp
   String _getStatusText() {
-    if (_isReplying) {
-      return 'Recording...';
-    } else if (_isPlaying && _hasAudioOrVideo()) {
+    if (_isPlaying && _hasAudioOrVideo()) {
       // SIMPLIFIED: Don't show "Now playing" - slider indicates this
       return '';
     } else {
@@ -963,12 +761,10 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
 
   /// Dynamic status color
   Color _getStatusColor() {
-    if (_isReplying) {
-      return Colors.green;
-    } else if (_isPlaying && _hasAudioOrVideo()) {
-      return Colors.white70;
+    if (_isPlaying && _hasAudioOrVideo()) {
+      return AppColors.textSecondary;
     } else {
-      return Colors.white54;
+      return AppColors.textSecondary;
     }
   }
 
@@ -976,23 +772,27 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
   bool _hasAudioOrVideo() {
     if (_vibe == null) return false;
     // Video vibe
-    if (_vibe!.isVideo && _vibe!.videoUrl != null && _vibe!.videoUrl!.isNotEmpty) return true;
+    if (_vibe!.isVideo &&
+        _vibe!.videoUrl != null &&
+        _vibe!.videoUrl!.isNotEmpty) {
+      return true;
+    }
     // Audio vibe (either audio-only or image+audio)
-    if (_vibe!.audioUrl != null && _vibe!.audioUrl!.isNotEmpty) return true;
+    if (_vibe!.audioUrl.isNotEmpty) return true;
     return false;
   }
 
   /// SWIPE NAVIGATION: TikTok-style dots indicator
   Widget _buildPageIndicator(double scale) {
     if (!_hasSwipeNavigation) return const SizedBox.shrink();
-    
+
     final total = widget.vibesList!.length;
     final current = _currentVibeIndex;
-    
+
     // TikTok shows max 7 dots with scrolling window
     const maxDots = 7;
     final showDots = total <= maxDots;
-    
+
     return Padding(
       padding: EdgeInsets.symmetric(vertical: 8 * scale),
       child: Row(
@@ -1003,7 +803,7 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
       ),
     );
   }
-  
+
   /// Build static dots for small lists
   List<Widget> _buildDots(int total, int current, double scaleFactor) {
     return List.generate(total, (index) {
@@ -1016,30 +816,38 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
         height: isActive ? 8 * scaleFactor : 6 * scaleFactor,
         decoration: BoxDecoration(
           shape: BoxShape.circle,
-          color: isActive 
-              ? Colors.white 
-              : Colors.white.withOpacity(0.4),
+          color: isActive
+              ? AppColors.textPrimary
+              : AppColors.textPrimary.withOpacity(0.4),
         ),
       );
     });
   }
-  
+
   /// Build scrolling dots for large lists (TikTok style)
-  List<Widget> _buildScrollingDots(int total, int current, int maxDots, double scaleFactor) {
+  List<Widget> _buildScrollingDots(
+    int total,
+    int current,
+    int maxDots,
+    double scaleFactor,
+  ) {
     // Calculate visible window
     final halfWindow = maxDots ~/ 2;
     int start = (current - halfWindow).clamp(0, total - maxDots);
     int end = (start + maxDots).clamp(0, total);
-    
+
     return List.generate(end - start, (i) {
       final index = start + i;
       final isActive = index == current;
-      
+
       // Edge dots are smaller (TikTok style fade effect)
       final distanceFromCenter = (index - current).abs();
-      final dotScale = distanceFromCenter <= 1 ? 1.0 : 
-                       distanceFromCenter == 2 ? 0.8 : 0.6;
-      
+      final dotScale = distanceFromCenter <= 1
+          ? 1.0
+          : distanceFromCenter == 2
+          ? 0.8
+          : 0.6;
+
       return AnimatedContainer(
         duration: const Duration(milliseconds: 200),
         curve: Curves.easeOut,
@@ -1048,14 +856,13 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
         height: (isActive ? 8 : 6) * dotScale * scaleFactor,
         decoration: BoxDecoration(
           shape: BoxShape.circle,
-          color: isActive 
-              ? Colors.white 
-              : Colors.white.withOpacity(0.4 * dotScale),
+          color: isActive
+              ? AppColors.textPrimary
+              : AppColors.textPrimary.withOpacity(0.4 * dotScale),
         ),
       );
     });
   }
-
 
   /// ═══════════════════════════════════════════════════════════════════════
   /// BACKGROUND BUILDERS - Different for each content type
@@ -1067,9 +874,9 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
   /// - Drop shadow gives depth/polaroid effect
   Widget _buildVideoBackground(double scale) {
     final screenWidth = MediaQuery.of(context).size.width;
-    final squareSize = screenWidth; // Match CameraScreen full width 
+    final squareSize = screenWidth; // Match CameraScreen full width
     final videoSize = _videoController!.value.size;
-    
+
     return Stack(
       fit: StackFit.expand,
       children: [
@@ -1085,7 +892,10 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
           Transform.scale(
             scale: 1.2,
             child: ImageFiltered(
-              imageFilter: ImageFilter.blur(sigmaX: 40 * scale, sigmaY: 40 * scale),
+              imageFilter: ImageFilter.blur(
+                sigmaX: 40 * scale,
+                sigmaY: 40 * scale,
+              ),
               child: CachedNetworkImage(
                 imageUrl: _vibe!.imageUrl!,
                 fit: BoxFit.cover,
@@ -1093,19 +903,20 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
                 height: double.infinity,
                 // MEMORY FIX: Decode at low resolution for heavy blur background
                 // This saves memory (50x50 bitmap vs 1080p) and speeds up the "Pre-warm"
-                memCacheWidth: 50, 
-                placeholder: (_, __) => Container(color: const Color(0xFF111111)),
-                errorWidget: (_, __, ___) => Container(color: const Color(0xFF111111)),
+                memCacheWidth: 50,
+                placeholder: (_, __) => Container(color: AppColors.surfaceDark),
+                errorWidget: (_, __, ___) =>
+                    Container(color: AppColors.surfaceDark),
               ),
             ),
           )
         else
           // Fallback if no thumbnail: just use the cyberpunk mesh
-           _buildCyberpunkBackground(scale),
+          _buildCyberpunkBackground(scale),
 
         // Dimming overlay for contrast
         Container(color: Colors.black.withOpacity(0.4)),
-        
+
         // ═══════════════════════════════════════════════════════════════════
         // LAYER 2: FLOATING 1:1 SQUARE VIDEO (the portal)
         // ═══════════════════════════════════════════════════════════════════
@@ -1140,18 +951,18 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
                         child: VideoPlayer(_videoController!),
                       ),
                     ),
-                    
+
                     // Subtle inner border for definition
                     Container(
                       decoration: BoxDecoration(
                         borderRadius: BorderRadius.circular(24 * scale),
                         border: Border.all(
-                          color: Colors.white.withOpacity(0.1),
+                          color: AppColors.textPrimary.withOpacity(0.1),
                           width: 1 * scale,
                         ),
                       ),
                     ),
-                    
+
                     // Standard Play/Pause indicator
                     _buildCenteredPlayIndicator(
                       isPlaying: _isPlaying,
@@ -1175,7 +986,7 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
   Widget _buildImageBackground(double scale) {
     final screenWidth = MediaQuery.of(context).size.width;
     final squareSize = screenWidth; // Match CameraScreen full width
-    
+
     return Stack(
       fit: StackFit.expand,
       children: [
@@ -1196,13 +1007,13 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
             errorWidget: (_, __, ___) => _buildGradientFallback(),
           ),
         ),
-        
+
         // Heavy blur effect (sigma 40 for atmospheric feel)
         BackdropFilter(
           filter: ImageFilter.blur(sigmaX: 40 * scale, sigmaY: 40 * scale),
           child: Container(color: Colors.transparent),
         ),
-        
+
         // ═══════════════════════════════════════════════════════════════════
         // LAYER 2: FLOATING 1:1 SQUARE (the portal)
         // ═══════════════════════════════════════════════════════════════════
@@ -1233,15 +1044,20 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
                       imageUrl: _vibe!.imageUrl!,
                       fit: BoxFit.cover, // Fills the square, may crop slightly
                       // FIX: Uses same cache as dashboard - loads instantly
-                      placeholder: (_, __) => Container(color: Colors.grey[900]),
+                      placeholder: (_, __) =>
+                          Container(color: AppColors.surface),
                       errorWidget: (_, __, ___) => Container(
-                        color: Colors.grey[900],
+                        color: AppColors.surface,
                         child: Center(
-                          child: Icon(Icons.image_not_supported, color: Colors.white54, size: 48 * scale),
+                          child: AppIcon(
+                            AppIcons.brokenImage,
+                            color: AppColors.textSecondary,
+                            size: 48 * scale,
+                          ),
                         ),
                       ),
                     ),
-                    
+
                     // Subtle inner border for definition
                     Container(
                       decoration: BoxDecoration(
@@ -1252,13 +1068,14 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
                         ),
                       ),
                     ),
-                    
+
                     // Standard Play/Pause indicator - ONLY if has audio
-                    if (_vibe!.audioUrl != null && _vibe!.audioUrl!.isNotEmpty)
+                    if (_vibe!.audioUrl.isNotEmpty)
                       _buildCenteredPlayIndicator(
                         isPlaying: _isPlaying,
                         isBuffering: _isBuffering, // Pass buffering state
-                        showPauseIcon: false, // For photos, usually just show play arrow when paused
+                        showPauseIcon:
+                            false, // For photos, usually just show play arrow when paused
                         scale: scale,
                       ),
                   ],
@@ -1290,13 +1107,13 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
           )
         else
           _buildGradientFallback(),
-        
+
         // Layer 2: Heavy blur effect
         BackdropFilter(
           filter: ImageFilter.blur(sigmaX: 60, sigmaY: 60),
           child: Container(color: Colors.transparent),
         ),
-        
+
         // Layer 3: Dark gradient overlay
         Container(
           decoration: BoxDecoration(
@@ -1304,9 +1121,9 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
               begin: Alignment.topCenter,
               end: Alignment.bottomCenter,
               colors: [
-                Colors.black.withOpacity(0.3),
-                Colors.black.withOpacity(0.4),
-                Colors.black.withOpacity(0.6),
+                AppColors.background.withOpacity(0.3),
+                AppColors.background.withOpacity(0.4),
+                AppColors.background.withOpacity(0.6),
               ],
             ),
           ),
@@ -1323,11 +1140,7 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
         gradient: LinearGradient(
           begin: Alignment.topCenter,
           end: Alignment.bottomCenter,
-          colors: [
-            Colors.grey[900]!,
-            AppColors.background,
-            Colors.grey[900]!,
-          ],
+          colors: [AppColors.surface, AppColors.background, AppColors.surface],
         ),
       ),
     );
@@ -1339,21 +1152,21 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
 
   /// Standardized Play indicator for the "Atmospheric Portal"
   Widget _buildCenteredPlayIndicator({
-    required bool isPlaying, 
-    required bool showPauseIcon, 
+    required bool isPlaying,
+    required bool showPauseIcon,
     bool isBuffering = false, // Optional buffering state
     required double scale,
   }) {
     // If buffering, show loading spinner regardless of play state
     if (isBuffering) {
       return Container(
-        color: Colors.black.withOpacity(0.2), // Subtle dim
+        color: AppColors.background.withOpacity(0.2), // Subtle dim
         child: Center(
           child: SizedBox(
             width: 50 * scale,
             height: 50 * scale,
             child: CircularProgressIndicator(
-              color: Colors.white,
+              color: AppColors.textPrimary,
               strokeWidth: 3 * scale,
             ),
           ),
@@ -1365,25 +1178,25 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
       opacity: isPlaying ? 0.0 : 1.0,
       duration: const Duration(milliseconds: 300),
       child: Container(
-        color: Colors.black.withOpacity(0.5),
+        color: AppColors.background.withOpacity(0.5),
         child: Center(
           child: Container(
             width: 72 * scale,
             height: 72 * scale,
             decoration: BoxDecoration(
-              color: Colors.white.withOpacity(0.9),
+              color: AppColors.textPrimary.withOpacity(0.9),
               shape: BoxShape.circle,
               boxShadow: [
                 BoxShadow(
-                  color: Colors.black.withOpacity(0.2),
+                  color: AppColors.shadow,
                   blurRadius: 20 * scale,
                   spreadRadius: 5 * scale,
                 ),
               ],
             ),
-            child: Icon(
-              isPlaying ? Icons.pause : Icons.play_arrow,
-              color: Colors.black,
+            child: AppIcon(
+              isPlaying ? AppIcons.pause : AppIcons.play,
+              color: AppColors.textInverse,
               size: 40 * scale,
             ),
           ),
@@ -1392,11 +1205,17 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
     );
   }
 
-
   /// 2025: Locket-style minimalist top bar: [⌄]  Name • Time  [•••]
-  Widget _buildLocketTopBar(String statusText, Color statusColor, double scale) {
+  Widget _buildLocketTopBar(
+    String statusText,
+    Color statusColor,
+    double scale,
+  ) {
     return Padding(
-      padding: EdgeInsets.symmetric(horizontal: 16 * scale, vertical: 8 * scale),
+      padding: EdgeInsets.symmetric(
+        horizontal: 16 * scale,
+        vertical: 8 * scale,
+      ),
       child: Row(
         children: [
           // Close button (chevron down)
@@ -1409,9 +1228,9 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
                 color: Colors.white.withOpacity(0.1),
                 shape: BoxShape.circle,
               ),
-              child: Icon(
-                Icons.arrow_back_ios_new,
-                color: Colors.white,
+              child: AppIcon(
+                AppIcons.caretLeft,
+                color: AppColors.textPrimary,
                 size: 18 * scale,
               ),
             ),
@@ -1427,16 +1246,16 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
               children: [
                 Text(
                   _vibe!.senderName,
-                  style: TextStyle(
-                    color: Colors.white,
-                    fontSize: 15 * scale,
+                  style: AppTypography.headlineSmall.copyWith(
+                    color: AppColors.textPrimary,
+                    fontSize: 18 * scale,
                     fontWeight: FontWeight.w900,
                     letterSpacing: -0.2 * scale,
                   ),
                 ),
                 Text(
                   _formatTimeAgo(_vibe!.createdAt),
-                  style: TextStyle(
+                  style: AppTypography.labelSmall.copyWith(
                     color: Colors.white.withOpacity(0.5),
                     fontSize: 11 * scale,
                     fontWeight: FontWeight.w600,
@@ -1456,9 +1275,9 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
                 color: Colors.white.withOpacity(0.1),
                 shape: BoxShape.circle,
               ),
-              child: Icon(
-                Icons.more_horiz,
-                color: Colors.white,
+              child: AppIcon(
+                AppIcons.dotsThree,
+                color: AppColors.textPrimary,
                 size: 22 * scale,
               ),
             ),
@@ -1469,126 +1288,36 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
   }
 
   /// Centered avatar with pulsing concentric rings (Locket style)
+  /// REPLACED with "Transmodal Orb" (BioluminescentOrb) for correct "Noir Void" aesthetics
   Widget _buildCenteredAvatar(double scale) {
-    final bool showPulse = _isPlaying;
-    final double avatarSize = _isReplying ? 100.0 * scale : 120.0 * scale;
+    // If we are playing, we want the orb to 'live' (Lavender mode).
+    // If paused, we show it dormant (Lime/Blue mode)
+    // We override content to show Play/Pause instead of Mic/Timer
 
-    return GestureDetector(
-      onTap: _togglePlayback,
-      child: SizedBox(
-        width: 250 * scale,
-        height: 250 * scale,
-        child: Stack(
-          alignment: Alignment.center,
-          children: [
-            // Pulsing rings (only when playing)
-            if (showPulse) ...[
-              // Outer ring
-              AnimatedBuilder(
-                animation: _pulseController,
-                builder: (context, child) {
-                  final ringScale = 1.0 + (_pulseController.value * 0.15);
-                  final opacity = 1.0 - (_pulseController.value * 0.7);
-                  return Transform.scale(
-                    scale: ringScale,
-                    child: Container(
-                      width: avatarSize + (80 * scale),
-                      height: avatarSize + (80 * scale),
-                      decoration: BoxDecoration(
-                        shape: BoxShape.circle,
-                        border: Border.all(
-                          color: Colors.purple.withOpacity(opacity * 0.3),
-                          width: 1.5 * scale,
-                        ),
-                      ),
-                    ),
-                  );
-                },
-              ),
-              // Middle ring
-              AnimatedBuilder(
-                animation: _pulseController,
-                builder: (context, child) {
-                  final ringScale = 1.0 + (_pulseController.value * 0.1);
-                  final opacity = 1.0 - (_pulseController.value * 0.5);
-                  return Transform.scale(
-                    scale: ringScale,
-                    child: Container(
-                      width: avatarSize + (50 * scale),
-                      height: avatarSize + (50 * scale),
-                      decoration: BoxDecoration(
-                        shape: BoxShape.circle,
-                        border: Border.all(
-                          color: Colors.purple.withOpacity(opacity * 0.4),
-                          width: 1.5 * scale,
-                        ),
-                      ),
-                    ),
-                  );
-                },
-              ),
-              // Inner ring
-              AnimatedBuilder(
-                animation: _pulseController,
-                builder: (context, child) {
-                  final ringScale = 1.0 + (_pulseController.value * 0.05);
-                  final opacity = 1.0 - (_pulseController.value * 0.3);
-                  return Transform.scale(
-                    scale: ringScale,
-                    child: Container(
-                      width: avatarSize + (20 * scale),
-                      height: avatarSize + (20 * scale),
-                      decoration: BoxDecoration(
-                        shape: BoxShape.circle,
-                        border: Border.all(
-                          color: Colors.purple.withOpacity(opacity * 0.5),
-                          width: 1.5 * scale,
-                        ),
-                      ),
-                    ),
-                  );
-                },
-              ),
-            ],
+    // Ensure duration is valid
+    final durationSeconds = _vibe!.audioDuration > 0 ? _vibe!.audioDuration : 0;
 
-            // Avatar container with white border
-            Container(
-              width: avatarSize,
-              height: avatarSize,
-              decoration: BoxDecoration(
-                shape: BoxShape.circle,
-                border: Border.all(color: Colors.white.withOpacity(0.3), width: 3 * scale),
-                boxShadow: [
-                  BoxShadow(
-                    color: Colors.black.withOpacity(0.3),
-                    blurRadius: 20 * scale,
-                    spreadRadius: 5 * scale,
-                  ),
-                ],
-              ),
-              child: ClipOval(
-                child: Stack(
-                  fit: StackFit.expand,
-                  children: [
-                    _vibe?.senderAvatar != null && _vibe!.senderAvatar!.isNotEmpty
-                        ? Image.network(
-                            _vibe!.senderAvatar!,
-                            fit: BoxFit.cover,
-                            errorBuilder: (_, __, ___) => _buildAvatarPlaceholder(),
-                          )
-                        : _buildAvatarPlaceholder(),
-                    
-                    // Standard Play/Pause indicator
-                    _buildCenteredPlayIndicator(
-                      isPlaying: _isPlaying,
-                      showPauseIcon: true,
-                      scale: scale,
-                    ),
-                  ],
-                ),
-              ),
-            ),
-          ],
+    return Center(
+      child: Transform.scale(
+        scale: scale * 1.2, // Slightly larger in player
+        child: BioluminescentOrb(
+          // When playing -> "Recording" state for visuals (Lavender + Ripples)
+          // When paused -> "Idle" state (Lime/Blue + Static)
+          isRecording: _isPlaying,
+          durationSeconds: durationSeconds,
+          // Mock amplitude for visual interest when playing
+          amplitude: _isPlaying ? 0.3 : 0.0,
+          onTap: _togglePlayback,
+          // Pass explicit progress from the audio player
+          progress: _playbackProgress,
+          showProgressRing:
+              false, // 🛑 FIX: Hide redundant progress ring (using linear bar/waveform instead)
+          // Override the center icon to show Play/Pause functionality
+          centerOverride: AppIcon(
+            _isPlaying ? AppIcons.pause : AppIcons.play,
+            color: AppColors.textPrimary,
+            size: 40,
+          ),
         ),
       ),
     );
@@ -1601,11 +1330,7 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
           colors: [Colors.purple.shade400, Colors.pink.shade400],
         ),
       ),
-      child: const Icon(
-        Icons.person,
-        color: Colors.white,
-        size: 48,
-      ),
+      child: AppIcon(AppIcons.profile, color: AppColors.textPrimary, size: 48),
     );
   }
 
@@ -1614,9 +1339,7 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
   Widget _buildPlaybackUI(double scale) {
     return Column(
       mainAxisSize: MainAxisSize.min,
-      children: [
-        _buildUnifiedActionPill(scale),
-      ],
+      children: [_buildUnifiedActionPill(scale)],
     );
   }
 
@@ -1624,9 +1347,7 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
   Widget _buildImageOnlyUI(double scale) {
     return Column(
       mainAxisSize: MainAxisSize.min,
-      children: [
-        _buildUnifiedActionPill(scale),
-      ],
+      children: [_buildUnifiedActionPill(scale)],
     );
   }
 
@@ -1637,273 +1358,227 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
   Widget _buildUnifiedActionPill(double scale) {
     // FIX: Get keyboard height to move pill above keyboard
     final keyboardHeight = MediaQuery.of(context).viewInsets.bottom;
-    
-    // === PREVIEW MODE UI ===
-    if (_isPreviewingReply) {
-      return Padding(
-        padding: EdgeInsets.only(bottom: math.max(0, (MediaQuery.viewInsetsOf(context).bottom - 20) * scale)),
-        child: Container(
-          margin: EdgeInsets.symmetric(horizontal: 24 * scale),
-          padding: EdgeInsets.symmetric(horizontal: 16 * scale, vertical: 12 * scale),
-          decoration: BoxDecoration(
-            color: AppColors.surface,
-            borderRadius: BorderRadius.circular(32 * scale),
-            border: Border.all(
-              color: AppColors.primaryAction.withOpacity(0.4),
-              width: 1.5 * scale,
-            ),
-            boxShadow: [
-              BoxShadow(
-                color: AppColors.primaryAction.withOpacity(0.15),
-                blurRadius: 16 * scale,
-                spreadRadius: 2 * scale,
-              ),
-            ],
-          ),
-          child: Row(
-            mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-            children: [
-              // Cancel Button
-              GestureDetector(
-                onTap: _cancelReply,
-                child: Container(
-                  padding: EdgeInsets.all(12 * scale),
-                  decoration: BoxDecoration(
-                    color: AppColors.error.withOpacity(0.15),
-                    shape: BoxShape.circle,
-                  ),
-                  child: Icon(
-                    Icons.close,
-                    color: AppColors.error,
-                    size: 24 * scale,
-                  ),
-                ),
-              ),
-              
-              // Play/Pause Preview Button
-              GestureDetector(
-                onTap: _isPlayingPreview ? _pausePreview : _playPreview,
-                child: Container(
-                  padding: EdgeInsets.all(16 * scale),
-                  decoration: BoxDecoration(
-                    color: Colors.white.withOpacity(0.1),
-                    shape: BoxShape.circle,
-                    border: Border.all(
-                      color: Colors.white.withOpacity(0.2),
-                      width: 2 * scale,
-                    ),
-                  ),
-                  child: Icon(
-                    _isPlayingPreview ? Icons.pause : Icons.play_arrow,
-                    color: Colors.white,
-                    size: 28 * scale,
-                  ),
-                ),
-              ),
-              
-              // Send Button
-              GestureDetector(
-                onTap: _confirmSendReply,
-                child: Container(
-                  padding: EdgeInsets.all(12 * scale),
-                  decoration: BoxDecoration(
-                    gradient: AppColors.auraGradient,
-                    shape: BoxShape.circle,
-                  ),
-                  child: Icon(
-                    Icons.send,
-                    color: Colors.white,
-                    size: 24 * scale,
-                  ),
-                ),
-              ),
-            ],
-          ),
-        ),
-      );
-    }
-    
-    // === NORMAL MODE UI ===
+
+    // === NORMAL MODE UI (Text Reply + Transcription) ===
     final bool canReply = _hasPlayed;
     final bool hasText = _textReplyController.text.isNotEmpty;
 
     return Padding(
-      padding: EdgeInsets.only(bottom: math.max(0, (MediaQuery.viewInsetsOf(context).bottom - 20) * scale)),
-      child: Stack(
-        alignment: Alignment.topCenter,
+      padding: EdgeInsets.only(
+        bottom: math.max(
+          0,
+          (MediaQuery.viewInsetsOf(context).bottom - 20) * scale,
+        ),
+        left: 16 * scale,
+        right: 16 * scale,
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.end,
         children: [
-          Container(
-            margin: EdgeInsets.symmetric(horizontal: 24 * scale),
-            child: GestureDetector(
-              onVerticalDragEnd: (details) {
-                if (details.primaryVelocity! < -300 && canReply && !_isTextReplying) {
-                  _navigateToCameraReply();
-                }
-              },
-              onTap: (canReply && !_isTextReplying) 
-                  ? () {
-                      setState(() => _isTextReplying = true);
-                      _textReplyFocusNode.requestFocus();
-                    }
-                  : null,
-              onLongPressStart: (canReply && !_isTextReplying && !_isPreviewingReply) ? (_) => _startReply() : null,
-              onLongPressEnd: (canReply && !_isTextReplying) ? (_) => _stopReply() : null,
-              child: AnimatedContainer(
-                duration: const Duration(milliseconds: 300),
-                padding: EdgeInsets.symmetric(horizontal: 20 * scale, vertical: 12 * scale),
-                decoration: BoxDecoration(
-                  color: AppColors.surface, 
-                  borderRadius: BorderRadius.circular(32 * scale),
-                  border: Border.all(
-                    color: _isTextReplying 
-                        ? AppColors.primaryAction.withOpacity(0.3)
-                        : Colors.white.withOpacity(0.08),
-                    width: 1 * scale,
-                  ),
-                  boxShadow: [
-                    if (_isReplying)
-                      BoxShadow(
-                        color: AppColors.error.withOpacity(0.3), // âœ¨ Thermal Orange Glow
-                        blurRadius: 25 * scale,
-                        spreadRadius: 8 * scale,
+          // MAIN PILL (Expanded)
+          Expanded(
+            child: Stack(
+              alignment: Alignment.topCenter,
+              children: [
+                Container(
+                  child: GestureDetector(
+                    onTap: (canReply && !_isTextReplying)
+                        ? () {
+                            setState(() => _isTextReplying = true);
+                            _textReplyFocusNode.requestFocus();
+                          }
+                        : null,
+                    child: AnimatedContainer(
+                      duration: const Duration(milliseconds: 300),
+                      padding: EdgeInsets.symmetric(
+                        horizontal: 20 * scale,
+                        vertical: 12 * scale,
                       ),
-                    if (_isTextReplying)
-                      BoxShadow(
-                        color: AppColors.primaryAction.withOpacity(0.1),
-                        blurRadius: 15 * scale,
-                        spreadRadius: 2 * scale,
-                      ),
-                  ],
-                ),
-                child: Row(
-                  children: [
-                    // LEFT: Camera Icon
-                    GestureDetector(
-                      onTap: (canReply && !_isTextReplying) ? _navigateToCameraReply : null,
-                      child: Container(
-                        padding: EdgeInsets.all(8 * scale),
-                        decoration: BoxDecoration(
-                          color: Colors.white.withOpacity(0.05),
-                          shape: BoxShape.circle,
+                      decoration: BoxDecoration(
+                        color: AppColors.surface,
+                        borderRadius: BorderRadius.circular(32 * scale),
+                        border: Border.all(
+                          color: _isTextReplying
+                              ? AppColors.primaryAction.withOpacity(0.3)
+                              : Colors.white.withOpacity(0.08),
+                          width: 1 * scale,
                         ),
-                        child: Icon(
-                          Icons.camera_alt,
-                          color: Colors.white.withOpacity(canReply ? 0.8 : 0.2),
-                          size: 20 * scale,
-                        ),
-                      ),
-                    ),
-                    
-                    SizedBox(width: 12 * scale),
-      
-                    // CENTER: Input / Label
-                    Expanded(
-                      child: _isTextReplying 
-                        ? TextField(
-                            controller: _textReplyController,
-                            focusNode: _textReplyFocusNode,
-                            style: TextStyle(color: Colors.white, fontSize: 15 * scale),
-                            cursorColor: AppColors.primaryAction,
-                            decoration: InputDecoration(
-                              hintText: 'Reply...',
-                              hintStyle: TextStyle(color: Colors.white24, fontSize: 15 * scale),
-                              border: InputBorder.none,
-                              isDense: true,
-                              contentPadding: EdgeInsets.zero,
+                        boxShadow: [
+                          if (_isTextReplying)
+                            BoxShadow(
+                              color: AppColors.primaryAction.withOpacity(0.1),
+                              blurRadius: 15 * scale,
+                              spreadRadius: 2 * scale,
                             ),
-                            onChanged: (val) => setState(() {}),
-                            onSubmitted: (_) => _sendTextReply(),
-                          )
-                        : Center(
-                            child: Text(
-                              _isReplying 
-                                ? 'RECORDING VIBE...' 
-                                : (canReply ? 'Reply or Hold to record' : 'LISTEN FIRST'),
-                              style: TextStyle(
-                                color: canReply ? Colors.white70 : Colors.white24,
-                                fontSize: 13 * scale,
-                                fontWeight: FontWeight.w900,
-                                letterSpacing: 0.5 * scale,
+                        ],
+                      ),
+                      child: Row(
+                        children: [
+                          // CENTER: Input / Label
+                          Expanded(
+                            child: _isTextReplying
+                                ? TextField(
+                                    controller: _textReplyController,
+                                    focusNode: _textReplyFocusNode,
+                                    style: AppTypography.bodyMedium.copyWith(
+                                      color: AppColors.textPrimary,
+                                      fontSize: 15 * scale,
+                                    ),
+                                    cursorColor: AppColors.primaryAction,
+                                    decoration: InputDecoration(
+                                      hintText: 'Reply...',
+                                      hintStyle: AppTypography.bodyMedium
+                                          .copyWith(
+                                            color: AppColors.textTertiary,
+                                            fontSize: 15 * scale,
+                                          ),
+                                      border: InputBorder.none,
+                                      isDense: true,
+                                      contentPadding: EdgeInsets.zero,
+                                    ),
+                                    onChanged: (val) => setState(() {}),
+                                    onSubmitted: (_) => _sendTextReply(),
+                                  )
+                                : Center(
+                                    child: Text(
+                                      canReply
+                                          ? 'Tap to reply'
+                                          : 'LISTEN FIRST',
+                                      style: AppTypography.labelMedium.copyWith(
+                                        color: canReply
+                                            ? AppColors.textSecondary
+                                            : AppColors.textTertiary,
+                                        fontSize: 13 * scale,
+                                        fontWeight: FontWeight.w900,
+                                        letterSpacing: 0.5 * scale,
+                                      ),
+                                    ),
+                                  ),
+                          ),
+
+                          SizedBox(width: 12 * scale),
+
+                          // RIGHT: Send button (only active when text is entered)
+                          GestureDetector(
+                            onTap: (hasText && _isTextReplying)
+                                ? _sendTextReply
+                                : null,
+                            child: Container(
+                              padding: EdgeInsets.all(8 * scale),
+                              decoration: BoxDecoration(
+                                color: (_isTextReplying && hasText)
+                                    ? AppColors.primaryAction.withOpacity(0.2)
+                                    : Colors.white.withOpacity(0.05),
+                                shape: BoxShape.circle,
+                              ),
+                              child: AppIcon(
+                                AppIcons.send,
+                                color: (_isTextReplying && hasText)
+                                    ? AppColors.primaryAction
+                                    : Colors.white.withOpacity(
+                                        canReply ? 0.3 : 0.2,
+                                      ),
+                                size: 20 * scale,
                               ),
                             ),
                           ),
-                    ),
-      
-                    SizedBox(width: 12 * scale),
-      
-                    // RIGHT: Mic / Send
-                    GestureDetector(
-                      onTap: (hasText && _isTextReplying) ? _sendTextReply : null,
-                      child: Container(
-                        padding: EdgeInsets.all(8 * scale),
-                        decoration: BoxDecoration(
-                          color: (_isTextReplying && hasText) 
-                              ? AppColors.primaryAction.withOpacity(0.2)
-                              : Colors.white.withOpacity(0.05),
-                          shape: BoxShape.circle,
-                        ),
-                        child: Icon(
-                          (_isTextReplying && hasText) ? Icons.send : Icons.mic,
-                          color: (_isTextReplying && hasText) 
-                              ? AppColors.primaryAction 
-                              : (_isReplying 
-                                  ? AppColors.error 
-                                  : Colors.white.withOpacity(canReply ? 0.8 : 0.2)),
-                          size: 20 * scale,
-                        ),
+                        ],
                       ),
-                    ),
-                  ],
-                ),
-              ),
-            ),
-          ),
-          // INTEGRATED PROGRESS BAR
-          if (_hasAudioOrVideo() && !_isReplying && !_isTextReplying)
-            Positioned(
-              top: 0,
-              left: 56 * scale, 
-              right: 56 * scale,
-              child: Container(
-                height: 2 * scale,
-                decoration: BoxDecoration(
-                  color: Colors.white.withOpacity(0.05),
-                  borderRadius: BorderRadius.circular(1 * scale),
-                ),
-                child: FractionallySizedBox(
-                  alignment: Alignment.centerLeft,
-                  widthFactor: _playbackProgress.clamp(0.0, 1.0),
-                  child: Container(
-                    decoration: BoxDecoration(
-                      color: AppColors.primaryAction,
-                      borderRadius: BorderRadius.circular(1 * scale),
-                      boxShadow: [
-                        BoxShadow(
-                          color: AppColors.primaryAction.withOpacity(0.5),
-                          blurRadius: 4 * scale,
-                        ),
-                      ],
                     ),
                   ),
                 ),
-              ),
+                // INTEGRATED PROGRESS BAR
+                if (_hasAudioOrVideo() && !_isTextReplying)
+                  Positioned(
+                    top: 0,
+                    left: 32 * scale,
+                    right: 32 * scale,
+                    child: Container(
+                      height: 2 * scale,
+                      decoration: BoxDecoration(
+                        color: Colors.white.withOpacity(0.05),
+                        borderRadius: BorderRadius.circular(1 * scale),
+                      ),
+                      child: FractionallySizedBox(
+                        alignment: Alignment.centerLeft,
+                        widthFactor: _playbackProgress.clamp(0.0, 1.0),
+                        child: Container(
+                          decoration: BoxDecoration(
+                            color: AppColors.primaryAction,
+                            borderRadius: BorderRadius.circular(1 * scale),
+                            boxShadow: [
+                              BoxShadow(
+                                color: AppColors.primaryAction.withOpacity(0.5),
+                                blurRadius: 4 * scale,
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+              ],
             ),
+          ),
+
+          // RIGHT: Transcript / Subtitles Button
+          if (_hasAudioOrVideo()) ...[
+            SizedBox(width: 12 * scale),
+            _buildTranscriptButton(scale),
+          ],
         ],
       ),
     );
   }
 
-  void _navigateToCameraReply() {
-    HapticFeedback.mediumImpact();
-    context.pushNamed(
-      AppRoutes.camera,
-      extra: _vibe, // Pass the VibeModel directly for the router to cast
+
+
+  /// Transcript Toggle Button
+  /// Transcript Toggle Button
+  Widget _buildTranscriptButton(double scale) {
+    // Only show if media has audio/video content (nothing to transcribe for images)
+    if (!_hasAudioOrVideo()) return const SizedBox.shrink();
+
+    final isActive = _showTranscription;
+
+    return GestureDetector(
+      onTap: _toggleTranscription,
+      child: Container(
+        // PADDING FIX: Increased to 18 to match Action Pill height (60 * scale)
+        // Icon (24) + Padding (18*2) = 60
+        padding: EdgeInsets.all(18 * scale),
+        decoration: BoxDecoration(
+          color: isActive
+              ? AppColors.textPrimary
+              : Colors.white.withOpacity(0.1),
+          shape: BoxShape.circle,
+          border: Border.all(
+            color: isActive
+                ? Colors.transparent
+                : Colors.white.withOpacity(0.1),
+            width: 1 * scale,
+          ),
+          boxShadow: isActive
+              ? [
+                  BoxShadow(
+                    color: Colors.white.withOpacity(0.3),
+                    blurRadius: 12 * scale,
+                  ),
+                ]
+              : null,
+        ),
+        child: AppIcon(
+          isActive ? AppIcons.closedCaption : AppIcons.closedCaption,
+          color: isActive ? AppColors.textInverse : AppColors.textPrimary,
+          size: 24 * scale,
+        ),
+      ),
     );
   }
 
   /// Unified Action Button (Viral / Secondary)
   Widget _buildModernActionButton({
-    required IconData icon,
+    required PhosphorIconData icon,
     required Color color,
     required VoidCallback onTap,
     Color? backgroundColor,
@@ -1917,16 +1592,18 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
         decoration: BoxDecoration(
           color: backgroundColor ?? Colors.white.withOpacity(0.1),
           shape: BoxShape.circle,
-          border: borderColor != null ? Border.all(color: borderColor, width: 1) : null,
+          border: borderColor != null
+              ? Border.all(color: borderColor, width: 1)
+              : null,
         ),
-        child: Icon(icon, color: color, size: 22),
+        child: AppIcon(icon, color: color, size: 22),
       ),
     );
   }
 
   /// Unified Primary Button (Reply Mic)
   Widget _buildPrimaryActionButton({
-    required IconData icon,
+    required PhosphorIconData icon,
     required VoidCallback? onTap,
     Color? glowColor,
   }) {
@@ -1939,12 +1616,20 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
           color: glowColor ?? const Color(0xFF9C5BF5),
           shape: BoxShape.circle,
         ),
-        child: Icon(icon, color: onTap != null ? Colors.white : Colors.white24, size: 28),
+        child: AppIcon(
+          icon,
+          color: onTap != null ? AppColors.textPrimary : AppColors.textTertiary,
+          size: 28,
+        ),
       ),
     );
   }
 
-  Widget _buildRecordingReplyUI(int duration, List<double> waveformData, double scale) {
+  Widget _buildRecordingReplyUI(
+    int duration,
+    List<double> waveformData,
+    double scale,
+  ) {
     return Padding(
       padding: EdgeInsets.symmetric(horizontal: 24 * scale),
       child: Column(
@@ -1952,9 +1637,12 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
         children: [
           // Timer pill (red background)
           Container(
-            padding: EdgeInsets.symmetric(horizontal: 16 * scale, vertical: 8 * scale),
+            padding: EdgeInsets.symmetric(
+              horizontal: 16 * scale,
+              vertical: 8 * scale,
+            ),
             decoration: BoxDecoration(
-              color: Colors.red.withOpacity(0.2),
+              color: AppColors.error.withOpacity(0.2),
               borderRadius: BorderRadius.circular(20 * scale),
             ),
             child: Row(
@@ -1964,15 +1652,15 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
                   width: 8 * scale,
                   height: 8 * scale,
                   decoration: const BoxDecoration(
-                    color: Colors.red,
+                    color: AppColors.error,
                     shape: BoxShape.circle,
                   ),
                 ),
                 SizedBox(width: 8 * scale),
                 Text(
                   _formatDuration(duration),
-                  style: TextStyle(
-                    color: Colors.red,
+                  style: AppTypography.labelLarge.copyWith(
+                    color: AppColors.error,
                     fontSize: 16 * scale,
                     fontWeight: FontWeight.w600,
                   ),
@@ -1984,37 +1672,14 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
           SizedBox(height: 24 * scale),
 
           // Waveform visualization
+          // Waveform visualization
           SizedBox(
-            height: 40 * scale,
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: List.generate(
-                20,
-                (index) {
-                  double value = 0.5;
-                  bool hasData = false;
-                  if (waveformData.isNotEmpty) {
-                    // Sample the waveform data to match 20 bars
-                    final step = waveformData.length / 20;
-                    final dataIndex = (index * step).floor().clamp(0, waveformData.length - 1);
-                    value = waveformData[dataIndex];
-                    hasData = true;
-                  }
-
-                  final barHeight = hasData
-                      ? (value * 35).clamp(4.0, 35.0) * scale
-                      : (5 + (index % 3) * 10).toDouble() * scale;
-                  return Container(
-                    width: 4 * scale,
-                    height: barHeight,
-                    margin: EdgeInsets.symmetric(horizontal: 2 * scale),
-                    decoration: BoxDecoration(
-                      color: Colors.green,
-                      borderRadius: BorderRadius.circular(2 * scale),
-                    ),
-                  );
-                },
-              ),
+            width: 180 * scale,
+            child: WaveformBars(
+              waveformData: waveformData,
+              height: 40 * scale,
+              color: Colors.green,
+              barCount: 20,
             ),
           ),
 
@@ -2035,9 +1700,9 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
                 ),
               ],
             ),
-            child: Icon(
-              Icons.mic,
-              color: Colors.white,
+            child: AppIcon(
+              AppIcons.mic,
+              color: AppColors.textPrimary,
               size: 36 * scale,
             ),
           ),
@@ -2047,8 +1712,8 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
           // "Release to send" text
           Text(
             'Release to send',
-            style: TextStyle(
-              color: Colors.white54,
+            style: AppTypography.bodyMedium.copyWith(
+              color: AppColors.textSecondary,
               fontSize: 14 * scale,
             ),
           ),
@@ -2063,8 +1728,6 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
     final secs = seconds % 60;
     return '$mins:${secs.toString().padLeft(2, '0')}';
   }
-
-  
 
   String _formatTime(DateTime dateTime) {
     final now = DateTime.now();
@@ -2082,119 +1745,163 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
   }
 
   void _showOptionsSheet() {
-  showModalBottomSheet(
-    context: context,
-    backgroundColor: AppColors.surface,
-    shape: const RoundedRectangleBorder(
-      borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
-    ),
-    builder: (context) => Container(
-      padding: const EdgeInsets.symmetric(vertical: 24, horizontal: 8),
-      child: SingleChildScrollView(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            // AI Transcription Tool
-            ListTile(
-              leading: const Icon(Icons.text_snippet, color: AppColors.secondaryAction),
-              title: const Text('Read AI Transcript', style: TextStyle(color: Colors.white)),
-              subtitle: const Text('View voice-to-text conversion', style: TextStyle(color: Colors.white54)),
-              onTap: () async {
-                Navigator.pop(context);
-                await _loadTranscription();
-              },
-            ),
-            const Divider(color: Colors.white10),
+    AppModal.show(
+      context: context,
+      child: Container(
+        padding: const EdgeInsets.symmetric(vertical: 24, horizontal: 8),
+        child: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              // 🛑 REMOVED: AI Transcription Tool (redundant - CC button on player already handles this)
+              // Also, the CC button correctly filters for audio/video content
 
-            // Social Sharing Options
-
-            ListTile(
-              leading: Icon(Icons.movie, color: Colors.purple[400]),
-              title: const Text('Instagram Reels', style: TextStyle(color: Colors.white)),
-              onTap: () async {
-                Navigator.pop(context);
-                await _shareToInstagramReels();
-              },
-            ),
-
-            ListTile(
-              leading: const Icon(Icons.video_library, color: AppColors.primaryAction),
-              title: const Text('Share Video', style: TextStyle(color: Colors.white)),
-              subtitle: const Text('Other platforms (WhatsApp, etc)', style: TextStyle(color: Colors.white54)),
-              onTap: () async {
-                Navigator.pop(context);
-                await _shareAsViralVideo();
-              },
-            ),
-            const Divider(color: Colors.white10),
-
-            // Delete (only for sender)
-            if (_vibe!.senderId == ref.read(authServiceProvider).currentUserId)
+              // Social Sharing Options
               ListTile(
-                leading: const Icon(Icons.delete_outline, color: AppColors.urgency),
-                title: const Text('Delete for Everyone', style: TextStyle(color: AppColors.urgency)),
-                subtitle: const Text('Remove from both devices', style: TextStyle(color: Colors.white24, fontSize: 11)),
-                onTap: () {
+                leading: AppIcon(AppIcons.video, color: Colors.purple[400]),
+                title: Text(
+                  'Instagram Reels',
+                  style: AppTypography.bodyLarge.copyWith(
+                    color: AppColors.textPrimary,
+                  ),
+                ),
+                onTap: () async {
                   Navigator.pop(context);
-                  _confirmDeleteVibe();
+                  await _shareToInstagramReels();
                 },
               ),
-            if (_vibe!.senderId == ref.read(authServiceProvider).currentUserId)
-              const Divider(color: Colors.white10),
 
-            // Safety
-            ListTile(
-              leading: const Icon(Icons.flag, color: AppColors.error),
-              title: const Text('Report Vibe', style: TextStyle(color: AppColors.error)),
-              subtitle: const Text('Inappropriate content', style: TextStyle(color: Colors.white24, fontSize: 11)),
-              onTap: () {
-                Navigator.pop(context);
-                _reportVibe();
-              },
-            ),
-            ListTile(
-              leading: const Icon(Icons.block, color: AppColors.error),
-              title: const Text('Block User', style: TextStyle(color: AppColors.error)),
-              subtitle: Text('Stop seeing ${_vibe?.senderName}\'s vibes', style: const TextStyle(color: Colors.white24, fontSize: 11)),
-              onTap: () {
-                Navigator.pop(context);
-                _blockUser();
-              },
-            ),
-          ],
+              ListTile(
+                leading: AppIcon(
+                  AppIcons.gallery,
+                  color: AppColors.primaryAction,
+                ),
+                title: Text(
+                  'Share Video',
+                  style: AppTypography.bodyLarge.copyWith(
+                    color: AppColors.textPrimary,
+                  ),
+                ),
+                subtitle: Text(
+                  'Other platforms (WhatsApp, etc)',
+                  style: AppTypography.bodySmall.copyWith(
+                    color: AppColors.textSecondary,
+                  ),
+                ),
+                onTap: () async {
+                  Navigator.pop(context);
+                  await _shareAsViralVideo();
+                },
+              ),
+              Divider(color: AppColors.textPrimary.withOpacity(0.1)),
+
+              // Delete (only for sender)
+              if (_vibe!.senderId ==
+                  ref.read(authServiceProvider).currentUserId)
+                ListTile(
+                  leading: AppIcon(AppIcons.trash, color: AppColors.urgency),
+                  title: Text(
+                    'Delete for Everyone',
+                    style: AppTypography.bodyLarge.copyWith(
+                      color: AppColors.urgency,
+                    ),
+                  ),
+                  subtitle: Text(
+                    'Remove from both devices',
+                    style: AppTypography.labelSmall.copyWith(
+                      color: AppColors.textTertiary,
+                    ),
+                  ),
+                  onTap: () {
+                    Navigator.pop(context);
+                    _confirmDeleteVibe();
+                  },
+                ),
+              if (_vibe!.senderId ==
+                  ref.read(authServiceProvider).currentUserId)
+                Divider(color: AppColors.textPrimary.withOpacity(0.1)),
+
+              // Safety
+              ListTile(
+                leading: AppIcon(AppIcons.flag, color: AppColors.error),
+                title: Text(
+                  'Report Vibe',
+                  style: AppTypography.bodyLarge.copyWith(
+                    color: AppColors.error,
+                  ),
+                ),
+                subtitle: Text(
+                  'Inappropriate content',
+                  style: AppTypography.labelSmall.copyWith(
+                    color: AppColors.textTertiary,
+                  ),
+                ),
+                onTap: () {
+                  Navigator.pop(context);
+                  _reportVibe();
+                },
+              ),
+              ListTile(
+                leading: AppIcon(AppIcons.block, color: AppColors.error),
+                title: Text(
+                  'Block User',
+                  style: AppTypography.bodyLarge.copyWith(
+                    color: AppColors.error,
+                  ),
+                ),
+                subtitle: Text(
+                  'Stop seeing ${_vibe?.senderName}\'s vibes',
+                  style: AppTypography.labelSmall.copyWith(
+                    color: AppColors.textTertiary,
+                  ),
+                ),
+                onTap: () {
+                  Navigator.pop(context);
+                  _blockUser();
+                },
+              ),
+            ],
+          ),
         ),
       ),
-    ),
-  );
-}
+    );
+  }
 
   void _reportVibe() async {
     final vibe = _vibe;
     if (vibe == null) return;
-    
+
     final reasons = ['Inappropriate content', 'Spam', 'Harassment', 'Other'];
-    
-    final reason = await showModalBottomSheet<String>(
+
+    final reason = await AppModal.show<String>(
       context: context,
-      backgroundColor: AppColors.surface,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
-      ),
-      builder: (context) => Container(
+      child: Container(
         padding: const EdgeInsets.symmetric(vertical: 24),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            const Text(
-              'Report Content', 
-              style: TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold)
+            Text(
+              'Report Content',
+              style: AppTypography.headlineSmall.copyWith(
+                color: AppColors.textPrimary,
+              ),
             ),
             const SizedBox(height: 16),
-            ...reasons.map((r) => ListTile(
-              title: Text(r, style: const TextStyle(color: Colors.white)),
-              trailing: const Icon(Icons.chevron_right, color: Colors.white24),
-              onTap: () => Navigator.pop(context, r),
-            )),
+            ...reasons.map(
+              (r) => ListTile(
+                title: Text(
+                  r,
+                  style: AppTypography.bodyLarge.copyWith(
+                    color: AppColors.textPrimary,
+                  ),
+                ),
+                trailing: AppIcon(
+                  AppIcons.chevronRight,
+                  color: AppColors.textTertiary,
+                ),
+                onTap: () => Navigator.pop(context, r),
+              ),
+            ),
             const SizedBox(height: 16),
           ],
         ),
@@ -2203,24 +1910,29 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
 
     if (reason != null && mounted) {
       try {
-        await ref.read(vibeServiceProvider).reportVibe(
-          vibeId: vibe.id,
-          reporterId: ref.read(authServiceProvider).currentUserId ?? 'unknown',
-          reason: reason,
-        );
+        await ref
+            .read(vibeServiceProvider)
+            .reportVibe(
+              vibeId: vibe.id,
+              reporterId:
+                  ref.read(authServiceProvider).currentUserId ?? 'unknown',
+              reason: reason,
+            );
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(
-              content: Text('Thank you. We will review this vibe within 24 hours.'),
+              content: Text(
+                'Thank you. We will review this vibe within 24 hours.',
+              ),
               backgroundColor: Colors.green,
             ),
           );
         }
       } catch (e) {
         if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text('Error reporting: $e')),
-          );
+          ScaffoldMessenger.of(
+            context,
+          ).showSnackBar(SnackBar(content: Text('Error reporting: $e')));
         }
       }
     }
@@ -2229,51 +1941,64 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
   void _blockUser() async {
     final vibe = _vibe;
     if (vibe == null) return;
-    
+
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
         backgroundColor: AppColors.surface,
-        title: Text('Block ${vibe.senderName}?', style: const TextStyle(color: Colors.white)),
-        content: const Text(
+        title: Text(
+          'Block ${vibe.senderName}?',
+          style: AppTypography.headlineSmall.copyWith(
+            color: AppColors.textPrimary,
+          ),
+        ),
+        content: Text(
           'You will no longer see vibes from this user. This action is permanent.',
-          style: TextStyle(color: Colors.white70),
+          style: AppTypography.bodyMedium.copyWith(
+            color: AppColors.textSecondary,
+          ),
         ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context, false),
-            child: const Text('Cancel', style: TextStyle(color: Colors.white54)),
+            child: Text(
+              'Cancel',
+              style: AppTypography.bodyLarge.copyWith(
+                color: AppColors.textSecondary,
+              ),
+            ),
           ),
           TextButton(
             onPressed: () => Navigator.pop(context, true),
-            child: const Text('Block', style: TextStyle(color: AppColors.error)),
+            child: Text(
+              'Block',
+              style: AppTypography.bodyLarge.copyWith(color: AppColors.error),
+            ),
           ),
         ],
       ),
     );
-    
+
     if (confirmed == true && mounted) {
       try {
         await ref.read(vibeServiceProvider).blockUser(vibe.senderId);
         if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text('Blocked ${vibe.senderName}')),
-          );
+          ScaffoldMessenger.of(
+            context,
+          ).showSnackBar(SnackBar(content: Text('Blocked ${vibe.senderName}')));
           // Auto-skip to next vibe if available
-          if (_hasSwipeNavigation && _currentVibeIndex < widget.vibesList!.length - 1) {
-            _pageController?.nextPage(
-              duration: const Duration(milliseconds: 300),
-              curve: Curves.easeInOut,
-            );
+          if (_hasSwipeNavigation &&
+              _currentVibeIndex < widget.vibesList!.length - 1) {
+            _onVibeChanged(_currentVibeIndex + 1);
           } else {
             Navigator.of(context).pop(); // Exit player if no more vibes
           }
         }
       } catch (e) {
         if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text('Error blocking: $e')),
-          );
+          ScaffoldMessenger.of(
+            context,
+          ).showSnackBar(SnackBar(content: Text('Error blocking: $e')));
         }
       }
     }
@@ -2300,26 +2025,37 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
       barrierDismissible: false,
       builder: (context) => AlertDialog(
         backgroundColor: AppColors.surface,
-        title: const Text('Creating Video', style: TextStyle(color: Colors.white)),
+        title: Text(
+          'Creating Video',
+          style: AppTypography.headlineSmall.copyWith(
+            color: AppColors.textPrimary,
+          ),
+        ),
         content: StatefulBuilder(
           builder: (context, setDialogState) {
             return Column(
               mainAxisSize: MainAxisSize.min,
               children: [
-                const Text(
+                Text(
                   'Generating TikTok-ready video...',
-                  style: TextStyle(color: Colors.white70),
+                  style: AppTypography.bodyMedium.copyWith(
+                    color: AppColors.textSecondary,
+                  ),
                 ),
                 const SizedBox(height: 16),
                 LinearProgressIndicator(
                   value: _exportProgress,
                   backgroundColor: AppColors.surfaceLight,
-                  valueColor: const AlwaysStoppedAnimation<Color>(AppColors.primaryAction),
+                  valueColor: const AlwaysStoppedAnimation<Color>(
+                    AppColors.primaryAction,
+                  ),
                 ),
                 const SizedBox(height: 8),
                 Text(
                   '${(_exportProgress * 100).toInt()}%',
-                  style: const TextStyle(color: AppColors.primaryAction),
+                  style: AppTypography.labelLarge.copyWith(
+                    color: AppColors.primaryAction,
+                  ),
                 ),
               ],
             );
@@ -2333,7 +2069,7 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
       // (replaced deleted VideoExportService which only shared separate files)
       final viralVideoService = ref.read(viralVideoServiceProvider);
       final File? videoFile;
-      
+
       if (_vibe!.isVideo && _vibe!.videoUrl != null) {
         videoFile = await viralVideoService.downloadVideo(
           _vibe!.videoUrl!,
@@ -2367,9 +2103,9 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
     } catch (e) {
       Navigator.pop(context); // Close progress dialog
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Error: $e')),
-        );
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('Error: $e')));
       }
     } finally {
       setState(() => _isExportingVideo = false);
@@ -2395,10 +2131,12 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
   Future<void> _shareViralVideo(String platform) async {
     // VIRAL FIX: For audio-only vibes, fallback to sender avatar
     final imageUrl = _vibe!.imageUrl ?? _vibe!.senderAvatar;
-    
+
     if (imageUrl == null || imageUrl.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('No image or avatar available for video creation')),
+        const SnackBar(
+          content: Text('No image or avatar available for video creation'),
+        ),
       );
       return;
     }
@@ -2408,20 +2146,22 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
       _exportProgress = 0.0;
     });
 
-
-
     // VIRAL FIX: Background processing (remove blocking dialog)
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
-        content: Text('Creating ${platform == 'tiktok' ? 'TikTok' : 'Instagram'} video in background...'),
+        content: Text(
+          'Creating ${platform == 'tiktok' ? 'TikTok' : 'Instagram'} video in background...',
+        ),
         duration: const Duration(seconds: 2),
-        backgroundColor: platform == 'tiktok' ? Colors.cyan.withOpacity(0.8) : Colors.pink.withOpacity(0.8),
+        backgroundColor: platform == 'tiktok'
+            ? Colors.cyan.withOpacity(0.8)
+            : Colors.pink.withOpacity(0.8),
       ),
     );
 
     try {
       final viralService = ref.read(viralVideoServiceProvider);
-      
+
       // Generate or download the video
       final File? videoFile;
       if (_vibe!.isVideo && _vibe!.videoUrl != null) {
@@ -2465,25 +2205,28 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
               '🎤 Listen to this Vibe from ${_vibe!.senderName}!\n\nDownload Vibe: https://getvibe.app',
             );
         }
-        
+
         debugPrint('Share result: $result');
-        
+
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('Video ready!'), backgroundColor: AppColors.success),
+            const SnackBar(
+              content: Text('Video ready!'),
+              backgroundColor: AppColors.success,
+            ),
           );
         }
       } else if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Failed to create video')),
-        );
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(const SnackBar(content: Text('Failed to create video')));
       }
     } catch (e) {
       // Navigator.pop(context); // REMOVED: Blocking dialog
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Error: $e')),
-        );
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('Error: $e')));
       }
     } finally {
       setState(() => _isExportingVideo = false);
@@ -2528,12 +2271,14 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
       String? text;
 
       // Support both audio and video transcription (Whisper handles both)
-      final String mediaUrlToTranscribe = _vibe!.audioUrl.isNotEmpty 
-          ? _vibe!.audioUrl 
+      final String mediaUrlToTranscribe = _vibe!.audioUrl.isNotEmpty
+          ? _vibe!.audioUrl
           : (_vibe!.videoUrl ?? '');
 
       if (mediaUrlToTranscribe.isNotEmpty) {
-        text = await transcriptionService.transcribeFromUrl(mediaUrlToTranscribe);
+        text = await transcriptionService.transcribeFromUrl(
+          mediaUrlToTranscribe,
+        );
       }
 
       if (text != null && mounted) {
@@ -2541,10 +2286,10 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
           _transcriptionText = text;
           _showTranscription = true;
         });
-        
+
         // PERSISTENCE: Save transcription to Firestore via service
         ref.read(vibeServiceProvider).saveTranscription(_vibe!.id, text);
-        
+
         if (!silent) {
           _showTranscriptionDialog(text);
         }
@@ -2555,9 +2300,9 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
       }
     } catch (e) {
       if (!silent && mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Transcription error: $e')),
-        );
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('Transcription error: $e')));
       }
     }
   }
@@ -2570,11 +2315,13 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
         backgroundColor: AppColors.surface,
         title: Row(
           children: [
-            const Icon(Icons.text_snippet, color: AppColors.primaryAction),
+            AppIcon(AppIcons.textSnippet, color: AppColors.primaryAction),
             const SizedBox(width: 8),
             Text(
               'Transcription',
-              style: AppTypography.headlineSmall.copyWith(color: Colors.white),
+              style: AppTypography.headlineSmall.copyWith(
+                color: AppColors.textPrimary,
+              ),
             ),
           ],
         ),
@@ -2599,7 +2346,7 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
                 child: Text(
                   text,
                   style: AppTypography.bodyLarge.copyWith(
-                    color: Colors.white,
+                    color: AppColors.textPrimary,
                     height: 1.5,
                   ),
                 ),
@@ -2616,11 +2363,21 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
                 const SnackBar(content: Text('Copied to clipboard')),
               );
             },
-            child: const Text('Copy', style: TextStyle(color: AppColors.primaryAction)),
+            child: Text(
+              'Copy',
+              style: AppTypography.buttonText.copyWith(
+                color: AppColors.primaryAction,
+              ),
+            ),
           ),
           TextButton(
             onPressed: () => Navigator.pop(context),
-            child: const Text('Close', style: TextStyle(color: Colors.white)),
+            child: Text(
+              'Close',
+              style: AppTypography.buttonText.copyWith(
+                color: AppColors.textPrimary,
+              ),
+            ),
           ),
         ],
       ),
@@ -2650,12 +2407,11 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
 
       // Use share_plus to share actual files
       await _shareVibeFiles();
-      
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Share failed: $e')),
-        );
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('Share failed: $e')));
       }
     }
   }
@@ -2665,7 +2421,7 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
     try {
       final tempDir = await getTemporaryDirectory();
       final files = <XFile>[];
-      
+
       // Download and add image if available
       final imageUrl = _vibe!.imageUrl;
       if (imageUrl != null && imageUrl.isNotEmpty) {
@@ -2680,7 +2436,7 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
           debugPrint('Failed to download image: $e');
         }
       }
-      
+
       // Download and add audio if available
       if (_vibe!.audioUrl.isNotEmpty) {
         try {
@@ -2696,7 +2452,9 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
       }
 
       // Download and add video if available
-      if (_vibe!.isVideo && _vibe!.videoUrl != null && _vibe!.videoUrl!.isNotEmpty) {
+      if (_vibe!.isVideo &&
+          _vibe!.videoUrl != null &&
+          _vibe!.videoUrl!.isNotEmpty) {
         try {
           final videoFile = File('${tempDir.path}/vibe_video_${_vibe!.id}.mp4');
           if (_vibe!.videoUrl!.startsWith('http')) {
@@ -2708,14 +2466,13 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
           debugPrint('Failed to download video: $e');
         }
       }
-      
+
       // Build share message
-      final shareText = '🎤 Listen to this Vibe from ${_vibe!.senderName}!\n\n'
-          '${_vibe!.isFromGallery && _vibe!.originalPhotoDate != null 
-              ? "📅 Time Travel from ${_formatDate(_vibe!.originalPhotoDate!)}\n\n" 
-              : ""}'
+      final shareText =
+          '🎤 Listen to this Vibe from ${_vibe!.senderName}!\n\n'
+          '${_vibe!.isFromGallery && _vibe!.originalPhotoDate != null ? "📅 Time Travel from ${_formatDate(_vibe!.originalPhotoDate!)}\n\n" : ""}'
           'Download Vibe to hear it: https://getvibe.app';
-      
+
       // Share files if we have any, otherwise just share text
       if (files.isNotEmpty) {
         await Share.shareXFiles(
@@ -2724,16 +2481,13 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
           subject: 'Nock from ${_vibe!.senderName}',
         );
       } else {
-        await Share.share(
-          shareText,
-          subject: 'Nock from ${_vibe!.senderName}',
-        );
+        await Share.share(shareText, subject: 'Nock from ${_vibe!.senderName}');
       }
-      
+
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Shared successfully!')),
-        );
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(const SnackBar(content: Text('Shared successfully!')));
       }
     } catch (e) {
       debugPrint('Share error: $e');
@@ -2748,13 +2502,27 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
   }
 
   Future<void> _shareAppLink() async {
-    const shareText = '✨ I\'m using Vibe to send voice messages that appear on my friends\' home screens!\n\n'
+    const shareText =
+        '✨ I\'m using Vibe to send voice messages that appear on my friends\' home screens!\n\n'
         'Download Vibe: https://getvibe.app';
     await Share.share(shareText, subject: 'Check out Vibe!');
   }
 
   String _formatDate(DateTime date) {
-    final months = ['JAN', 'FEB', 'MAR', 'APR', 'MAY', 'JUN', 'JUL', 'AUG', 'SEP', 'OCT', 'NOV', 'DEC'];
+    final months = [
+      'JAN',
+      'FEB',
+      'MAR',
+      'APR',
+      'MAY',
+      'JUN',
+      'JUL',
+      'AUG',
+      'SEP',
+      'OCT',
+      'NOV',
+      'DEC',
+    ];
     return '${months[date.month - 1]} ${date.day}, ${date.year}';
   }
 
@@ -2787,10 +2555,10 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
 
     final vibeId = _vibe!.id;
     final currentUser = ref.read(currentUserProvider).valueOrNull;
-    
+
     _textReplyFocusNode.unfocus();
     _textReplyController.clear();
-    
+
     // FIX: OPTIMISTIC UPDATE - Add reply to local state immediately
     // This prevents "Ghost Replies" where user sends but doesn't see the result
     final newReply = TextReply(
@@ -2799,12 +2567,10 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
       text: text,
       createdAt: DateTime.now(),
     );
-    
+
     setState(() {
       _isTextReplying = false;
-      _vibe = _vibe!.copyWith(
-        textReplies: [..._vibe!.textReplies, newReply],
-      );
+      _vibe = _vibe!.copyWith(textReplies: [..._vibe!.textReplies, newReply]);
     });
 
     try {
@@ -2816,54 +2582,18 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
     }
   }
 
-  void _addQuickReaction(String emoji) {
-    HapticFeedback.mediumImpact();
-    
-    // Send to service
-    ref.read(vibeServiceProvider).addReaction(_vibe!.id, emoji);
-    
-    // Trigger local animation (Emoji Rain)
-    _triggerEmojiRain(emoji);
-  }
-
-  void _triggerEmojiRain(String emoji) {
-    final random = math.Random();
-    final screenWidth = MediaQuery.of(context).size.width;
-    
+  void _toggleTranscription() {
+    HapticFeedback.selectionClick();
     setState(() {
-      for (int i = 0; i < 15; i++) {
-        _floatingEmojis.add(FloatingEmoji(
-          emoji: emoji,
-          x: random.nextDouble() * screenWidth,
-          y: -50.0, // Start ABOVE screen for "cascade down" effect
-          speed: 3.0 + random.nextDouble() * 5.0, // Slightly faster fall
-          opacity: 1.0,
-        ));
-      }
+      _showTranscription = !_showTranscription;
     });
 
-    // Start cleanup timer if not running
-    if (_emojiCleanupTimer == null || !_emojiCleanupTimer!.isActive) {
-      _emojiCleanupTimer = Timer.periodic(const Duration(milliseconds: 16), (timer) {
-        if (!mounted) {
-          timer.cancel();
-          return;
-        }
-
-        setState(() {
-          final screenHeight = MediaQuery.of(context).size.height;
-          for (var emoji in _floatingEmojis) {
-            emoji.y += emoji.speed; // REVERSED GRAVITY: Move DOWN
-            emoji.opacity -= 0.005; // Slower fade
-          }
-          _floatingEmojis.removeWhere((e) => e.y > screenHeight + 50 || e.opacity <= 0);
-        });
-
-        if (_floatingEmojis.isEmpty) {
-          timer.cancel();
-          _emojiCleanupTimer = null;
-        }
-      });
+    // If enabling and no text, maybe trigger a fetch?
+    // For now assuming text is populated by _vibe analysis
+    if (_showTranscription &&
+        _transcriptionText == null &&
+        _vibe?.transcription != null) {
+      setState(() => _transcriptionText = _vibe!.transcription);
     }
   }
 
@@ -2888,10 +2618,17 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
                   duration: const Duration(milliseconds: 300),
                   opacity: _isPlaying ? 1.0 : 0.6,
                   child: Container(
-                    padding: EdgeInsets.symmetric(horizontal: 16 * scale, vertical: 12 * scale),
+                    padding: EdgeInsets.symmetric(
+                      horizontal: 16 * scale,
+                      vertical: 12 * scale,
+                    ),
                     decoration: BoxDecoration(
                       gradient: LinearGradient(
-                        colors: [Colors.black.withOpacity(0.0), Colors.black.withOpacity(0.4), Colors.black.withOpacity(0.0)],
+                        colors: [
+                          Colors.black.withOpacity(0.0),
+                          Colors.black.withOpacity(0.4),
+                          Colors.black.withOpacity(0.0),
+                        ],
                       ),
                     ),
                     child: Text(
@@ -2899,8 +2636,8 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
                       maxLines: 2,
                       overflow: TextOverflow.ellipsis,
                       textAlign: TextAlign.center,
-                      style: TextStyle(
-                        color: Colors.white,
+                      style: AppTypography.headlineSmall.copyWith(
+                        color: AppColors.textPrimary,
                         fontSize: 18 * scale,
                         fontWeight: FontWeight.bold,
                         fontStyle: FontStyle.italic,
@@ -2925,7 +2662,7 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
 
   List<Widget> _buildStickyNotes(double scale) {
     if (_vibe!.textReplies.isEmpty) return [];
-    
+
     // 1. Show only the LATEST note
     final latestReply = _vibe!.textReplies.last;
     final count = _vibe!.textReplies.length;
@@ -2933,51 +2670,54 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
     return [
       Positioned(
         bottom: 120 * scale, // Position above the pill
-        left: 32 * scale,    // Slightly more margin
+        left: 32 * scale, // Slightly more margin
         child: Transform.rotate(
           angle: -0.025, // Subtle 1.5 degree rotation for "Sticky Note" feel
           child: GestureDetector(
-            onTap: () => _showAllCommentsSheet(), 
+            onTap: () => _showAllCommentsSheet(),
             child: Stack(
               clipBehavior: Clip.none,
               children: [
                 // The Note (Sticky Note Style)
                 GlassContainer(
-                  padding: EdgeInsets.symmetric(horizontal: 14 * scale, vertical: 12 * scale),
+                  padding: EdgeInsets.symmetric(
+                    horizontal: 14 * scale,
+                    vertical: 12 * scale,
+                  ),
                   // Standardized glass aesthetic (Removed yellow tint)
-                  backgroundColor: AppColors.glassBackground, 
+                  backgroundColor: AppColors.glassBackground,
                   borderRadius: 12 * scale,
                   borderColor: AppColors.glassBorder,
-                  showGlow: true, 
-                  useSmallGlow: true, 
+                  showGlow: true,
+                  useSmallGlow: true,
                   glowColor: AppColors.primaryAction.withOpacity(0.1),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     mainAxisSize: MainAxisSize.min,
                     children: [
                       Text(
-                          latestReply.senderName.toUpperCase(), 
-                          style: TextStyle(
-                            fontSize: 7 * scale, 
-                            fontWeight: FontWeight.w900, 
-                            color: Colors.white.withOpacity(0.7),
-                            letterSpacing: 1 * scale,
-                          )
+                        latestReply.senderName.toUpperCase(),
+                        style: AppTypography.labelSmall.copyWith(
+                          fontSize: 7 * scale,
+                          fontWeight: FontWeight.w900,
+                          color: Colors.white.withOpacity(0.7),
+                          letterSpacing: 1 * scale,
+                        ),
                       ),
                       SizedBox(height: 4 * scale),
                       Text(
-                          latestReply.text, 
-                          style: TextStyle(
-                            color: Colors.white, 
-                            fontSize: 14 * scale,
-                            fontWeight: FontWeight.w500,
-                            letterSpacing: -0.2 * scale,
-                          )
+                        latestReply.text,
+                        style: AppTypography.bodyMedium.copyWith(
+                          color: AppColors.textPrimary,
+                          fontSize: 14 * scale,
+                          fontWeight: FontWeight.w500,
+                          letterSpacing: -0.2 * scale,
+                        ),
                       ),
                     ],
                   ),
                 ),
-                
+
                 // The Counter Badge (if more than 1) - Positioned relative to the rotated note
                 if (count > 1)
                   Positioned(
@@ -2986,15 +2726,23 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
                     child: Container(
                       padding: EdgeInsets.all(6 * scale),
                       decoration: BoxDecoration(
-                        color: AppColors.primaryAction, 
+                        color: AppColors.primaryAction,
                         shape: BoxShape.circle,
                         boxShadow: [
-                          BoxShadow(color: Colors.black26, blurRadius: 4 * scale, spreadRadius: 1 * scale),
+                          BoxShadow(
+                            color: Colors.black26,
+                            blurRadius: 4 * scale,
+                            spreadRadius: 1 * scale,
+                          ),
                         ],
                       ),
                       child: Text(
-                        '+${count - 1}', 
-                        style: TextStyle(color: Colors.white, fontSize: 9 * scale, fontWeight: FontWeight.bold)
+                        '+${count - 1}',
+                        style: AppTypography.labelSmall.copyWith(
+                          color: AppColors.textPrimary,
+                          fontSize: 9 * scale,
+                          fontWeight: FontWeight.bold,
+                        ),
                       ),
                     ),
                   ),
@@ -3002,29 +2750,41 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
             ),
           ),
         ),
-      )
+      ),
     ];
   }
 
   void _showAllCommentsSheet() {
-    showModalBottomSheet(
+    AppModal.show(
       context: context,
-      backgroundColor: AppColors.surface,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
-      ),
-      builder: (context) => ListView.builder(
+      child: ListView.builder(
         padding: const EdgeInsets.all(24),
         itemCount: _vibe!.textReplies.length,
         itemBuilder: (context, index) {
           final r = _vibe!.textReplies[index];
           return ListTile(
             contentPadding: const EdgeInsets.symmetric(vertical: 8),
-            title: Text(r.senderName, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
-            subtitle: Text(r.text, style: const TextStyle(color: Colors.white70)),
+            title: Text(
+              r.senderName,
+              style: AppTypography.bodyMedium.copyWith(
+                color: AppColors.textPrimary,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+            subtitle: Text(
+              r.text,
+              style: AppTypography.bodySmall.copyWith(
+                color: AppColors.textSecondary,
+              ),
+            ),
             leading: CircleAvatar(
-              backgroundColor: Colors.white10,
-              child: Text(r.senderName[0].toUpperCase(), style: const TextStyle(color: Colors.white)),
+              backgroundColor: AppColors.textPrimary.withOpacity(0.1),
+              child: Text(
+                r.senderName[0].toUpperCase(),
+                style: AppTypography.bodyMedium.copyWith(
+                  color: AppColors.textPrimary,
+                ),
+              ),
             ),
           );
         },
@@ -3032,141 +2792,6 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
     );
   }
 
-
-  Widget _buildReactionsRow() {
-    // Unique list of emojis to avoid clutter
-    final uniqueEmojis = _vibe!.reactions.map((r) => r.emoji).toSet().toList();
-    // Limit to 4 for clean UI
-    final displayEmojis = uniqueEmojis.take(4).toList();
-    final count = _vibe!.reactions.length;
-
-    return Padding(
-      padding: const EdgeInsets.only(top: 4),
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-        decoration: BoxDecoration(
-          color: Colors.white.withOpacity(0.08),
-          borderRadius: BorderRadius.circular(12),
-        ),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            ...displayEmojis.map((e) => Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 1),
-              child: Text(e, style: const TextStyle(fontSize: 12)),
-            )),
-            if (count > displayEmojis.length)
-              Padding(
-                padding: const EdgeInsets.only(left: 2),
-                child: Text(
-                  '+${count - displayEmojis.length}',
-                  style: const TextStyle(
-                    color: Colors.white70,
-                    fontSize: 10,
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
-              ),
-          ],
-        ),
-      ),
-    );
-  }
-
-
-
-
-
-  /// ═══════════════════════════════════════════════════════════════════════
-  /// GHOST HINTS (Onboarding discovery) - Progressive Disclosure
-  /// ═══════════════════════════════════════════════════════════════════════
-
-  /// Check SharedPreferences and only show hints if user hasn't seen them
-  Future<void> _checkAndShowGhostHints() async {
-    try {
-      final prefs = await SharedPreferences.getInstance();
-      final hasSeenHints = prefs.getBool(_ghostHintsSeenKey) ?? false;
-      
-      if (hasSeenHints) {
-        // User has already seen hints - don't show again (Progressive Disclosure)
-        debugPrint('PlayerScreen: Ghost hints already seen, skipping');
-        return;
-      }
-      
-      // Show hints after delay for first-time users
-      _ghostHintTimer = Timer(const Duration(seconds: 2), () {
-        if (mounted && !_hasPlayed) {
-          setState(() => _showGhostHints = true);
-          // Mark as seen after showing
-          _markGhostHintsSeen();
-        }
-      });
-    } catch (e) {
-      debugPrint('PlayerScreen: Error checking ghost hints preference: $e');
-    }
-  }
-
-  /// Mark ghost hints as seen in SharedPreferences (Progressive Disclosure)
-  Future<void> _markGhostHintsSeen() async {
-    try {
-      final prefs = await SharedPreferences.getInstance();
-      await prefs.setBool(_ghostHintsSeenKey, true);
-      debugPrint('PlayerScreen: Ghost hints marked as seen');
-    } catch (e) {
-      debugPrint('PlayerScreen: Error saving ghost hints preference: $e');
-    }
-  }
-
-  Widget _buildGhostHints(double scale) {
-    return Positioned.fill(
-      child: IgnorePointer(
-        child: Stack(
-          children: [
-            // HOLD HINT (Pill pulsing)
-            Positioned(
-              bottom: 120 * scale,
-              left: 0,
-              right: 0,
-              child: Center(
-                child: _buildHintBubble('Hold middle to record voice reply', scale),
-              ),
-            ),
-            
-            // SWIPE HINT (Up arrow)
-            Positioned(
-              bottom: 180 * scale,
-              left: 40 * scale,
-              child: Column(
-                children: [
-                  Icon(Icons.keyboard_arrow_up, color: Colors.white, size: 32 * scale),
-                  SizedBox(height: 8 * scale),
-                  Text(
-                    'Swipe for Camera',
-                    style: TextStyle(color: Colors.white, fontSize: 10 * scale, fontWeight: FontWeight.bold),
-                  ),
-                ],
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildHintBubble(String text, double scale) {
-    return AnimatedOpacity(
-      duration: const Duration(seconds: 1),
-      opacity: _showGhostHints ? 0.8 : 0.0,
-      child: GlassContainer(
-        padding: EdgeInsets.symmetric(horizontal: 16 * scale, vertical: 8 * scale),
-        borderRadius: 20 * scale,
-        child: Text(
-          text,
-          style: TextStyle(color: Colors.white, fontSize: 12 * scale, fontWeight: FontWeight.bold),
-        ),
-      ),
-    );
-  }
   Widget _buildCyberpunkBackground(double scale) {
     return Container(
       color: AppColors.background,
@@ -3185,10 +2810,17 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
       context: context,
       builder: (context) => AlertDialog(
         backgroundColor: AppColors.surface,
-        title: const Text('Delete Vibe?', style: TextStyle(color: Colors.white)),
+        title: Text(
+          'Delete Vibe?',
+          style: AppTypography.headlineSmall.copyWith(
+            color: AppColors.textPrimary,
+          ),
+        ),
         content: Text(
           'This will delete the vibe for both you and ${_vibe!.senderName}. This cannot be undone.',
-          style: const TextStyle(color: Colors.white70),
+          style: AppTypography.bodyMedium.copyWith(
+            color: AppColors.textSecondary,
+          ),
         ),
         actions: [
           TextButton(
@@ -3203,17 +2835,17 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
         ],
       ),
     );
-    
+
     if (confirmed == true) {
       await _deleteVibe();
     }
   }
-  
+
   /// Delete vibe for everyone
   Future<void> _deleteVibe() async {
     try {
       await ref.read(vibeServiceProvider).deleteVibeForEveryone(_vibe!.id);
-      
+
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
@@ -3221,7 +2853,7 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
             backgroundColor: AppColors.success,
           ),
         );
-        
+
         if (context.canPop()) {
           context.pop();
         } else {
@@ -3242,31 +2874,13 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
 }
 
 /// Helper for reaction animations
-class FloatingEmoji {
-  final String emoji;
-  final double x;
-  double y;
-  final double speed;
-  double opacity;
-
-  FloatingEmoji({
-    required this.emoji,
-    required this.x,
-    required this.y,
-    required this.speed,
-    this.opacity = 1.0,
-  });
-}
 
 /// A custom painter that draws a faint cyberpunk tech grid
 class GridPainter extends CustomPainter {
   final Color color;
   final double scale;
-  
-  GridPainter({
-    required this.color,
-    required this.scale,
-  });
+
+  GridPainter({required this.color, required this.scale});
 
   @override
   void paint(Canvas canvas, Size size) {

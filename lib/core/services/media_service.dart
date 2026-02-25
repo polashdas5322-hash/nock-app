@@ -9,11 +9,13 @@ import 'package:permission_handler/permission_handler.dart';
 /// Camera initialization provider
 final cameraControllerProvider =
     StateNotifierProvider<CameraControllerNotifier, CameraState>((ref) {
-  return CameraControllerNotifier();
-});
+      return CameraControllerNotifier();
+    });
 
 /// Gallery request type provider (default to common - photo + video)
-final galleryRequestTypeProvider = StateProvider<RequestType>((ref) => RequestType.common);
+final galleryRequestTypeProvider = StateProvider<RequestType>(
+  (ref) => RequestType.common,
+);
 
 /// Gallery assets provider
 final galleryAssetsProvider = FutureProvider<List<AssetEntity>>((ref) async {
@@ -25,10 +27,7 @@ final galleryAssetsProvider = FutureProvider<List<AssetEntity>>((ref) async {
     type: type,
     filterOption: FilterOptionGroup(
       imageOption: const FilterOption(
-        sizeConstraint: SizeConstraint(
-          minWidth: 100,
-          minHeight: 100,
-        ),
+        sizeConstraint: SizeConstraint(minWidth: 100, minHeight: 100),
       ),
       videoOption: const FilterOption(
         durationConstraint: DurationConstraint(
@@ -100,8 +99,9 @@ class CameraState {
 class CameraControllerNotifier extends StateNotifier<CameraState> {
   List<CameraDescription> _cameras = [];
   bool _isInitializing = false; // Internal flag for legacy sync logic
-  int _initGeneration = 0;      // CRITICAL: Solves 1000% confirmed initialization race condition
-  
+  int _initGeneration =
+      0; // CRITICAL: Solves 1000% confirmed initialization race condition
+
   // Synchronization for JIT state transitions
   Future<void>? _enableAudioFuture;
 
@@ -116,28 +116,34 @@ class CameraControllerNotifier extends StateNotifier<CameraState> {
   /// CRITICAL: Uses _initGeneration to prevent race condition during background/resume
   Future<bool> initializeCamera() async {
     final currentGen = ++_initGeneration;
-    
+
     if (_isInitializing) {
-      debugPrint('Camera: Internal init flag set, but proceeding with new generation $currentGen');
+      debugPrint(
+        'Camera: Internal init flag set, but proceeding with new generation $currentGen',
+      );
     }
-    
+
     // Also skip if already initialized and it's the right controller
-    if (state.isInitialized && state.controller != null && state.controller!.value.isInitialized) {
+    if (state.isInitialized &&
+        state.controller != null &&
+        state.controller!.value.isInitialized) {
       debugPrint('Camera: Already initialized, skipping');
       return true;
     }
-    
+
     _isInitializing = true;
-    
+
     try {
       // 1. Permission Check (PASSIVE ONLY)
       // JIT Arch: We DO NOT request permission here.
       // If permission is denied, we simply fail to initialize and let UI show placeholder.
       final status = await Permission.camera.status;
-      
+
       // RACE CHECK: If app was backgrounded during dialog, generation will have changed
       if (currentGen != _initGeneration) {
-        debugPrint('Camera: Init generation $currentGen STALE after permission check, cancelling');
+        debugPrint(
+          'Camera: Init generation $currentGen STALE after permission check, cancelling',
+        );
         return false;
       }
 
@@ -155,10 +161,12 @@ class CameraControllerNotifier extends StateNotifier<CameraState> {
         _cameras = await availableCameras();
         _cachedCameras = _cameras;
       }
-      
+
       // RACE CHECK: Heavy async call
       if (currentGen != _initGeneration) {
-        debugPrint('Camera: Init generation $currentGen STALE after availableCameras, cancelling');
+        debugPrint(
+          'Camera: Init generation $currentGen STALE after availableCameras, cancelling',
+        );
         return false;
       }
 
@@ -176,13 +184,13 @@ class CameraControllerNotifier extends StateNotifier<CameraState> {
       // 3. Setup hardware (Pre-Warm if mic is granted)
       final micStatus = await Permission.microphone.status;
       final shouldPreWarm = micStatus.isGranted;
-      
+
       if (shouldPreWarm) {
         debugPrint('Camera: Mic granted - Pre-warming audio pipeline...');
       }
 
       await _setupCamera(frontCamera, currentGen, preWarmAudio: shouldPreWarm);
-      
+
       // RACE CHECK: Final confirmation
       return currentGen == _initGeneration;
     } catch (e) {
@@ -205,7 +213,7 @@ class CameraControllerNotifier extends StateNotifier<CameraState> {
       debugPrint('🎤 enableAudio: Request already in progress, awaiting...');
       return _enableAudioFuture;
     }
-    
+
     _enableAudioFuture = _performEnableAudio();
     try {
       await _enableAudioFuture;
@@ -216,60 +224,64 @@ class CameraControllerNotifier extends StateNotifier<CameraState> {
 
   Future<void> _performEnableAudio() async {
     if (state.controller == null) return;
-    
+
     // Check if duplicate request
     if (state.controller!.enableAudio) {
-       debugPrint('🎤 Audio already enabled, skipping re-init');
-       return;
+      debugPrint('🎤 Audio already enabled, skipping re-init');
+      return;
     }
-    
+
     debugPrint('🎤 Enabling Audio for Camera (Hard Reset)...');
-    
+
     // REVERT: We explicitly reset state to NULL to force a UI rebuild (show loading).
     // The "Seamless" approach caused issues with the camera portal.
     final currentGen = ++_initGeneration;
     final currentCamera = state.controller!.description;
     final oldController = state.controller;
-    
+
     // 1. Reset state (Trigger "Starting camera" UI)
-    state = state.copyWith(
-      controller: null,
-      isInitialized: false,
-    );
-    
+    state = state.copyWith(controller: null, isInitialized: false);
+
     try {
       // 2. Dispose old controller safely
       await oldController?.dispose();
-    } catch(e) {
+    } catch (e) {
       debugPrint('Error disposing old controller: $e');
     }
-    
+
     // 3. Setup new one with AUDIO
     await _setupCamera(currentCamera, currentGen, forceAudio: true);
   }
 
-  Future<void> _setupCamera(CameraDescription camera, int generation, {bool forceAudio = false, bool preWarmAudio = false}) async {
+  Future<void> _setupCamera(
+    CameraDescription camera,
+    int generation, {
+    bool forceAudio = false,
+    bool preWarmAudio = false,
+  }) async {
     // Check generation before starting
     if (generation != _initGeneration) return;
-    
+
     // JIT CONFIGURATION: Default to NO AUDIO for fast start & no mic permission
     // PRE-WARM: If mic is granted, we enable audio immediately to avoid flash later
     final useAudio = forceAudio || preWarmAudio;
-    
-    final configs = useAudio ? [
-       // If forced (recording mode) or pre-warmed, try audio configs first
-       (preset: ResolutionPreset.veryHigh, audio: true),
-       (preset: ResolutionPreset.high, audio: true),
-       (preset: ResolutionPreset.high, audio: true),
-       // [FIX APPLIED] FAIL FAST: Removed silent fallback. 
-       // If mic fails, we want _setupCamera to throw an exception so UI shows error.
-    ] : [
-       // Default (Preview mode): Prefer NO AUDIO
-       (preset: ResolutionPreset.veryHigh, audio: false),
-       (preset: ResolutionPreset.high, audio: false),
-       (preset: ResolutionPreset.medium, audio: false),
-    ];
-    
+
+    final configs = useAudio
+        ? [
+            // If forced (recording mode) or pre-warmed, try audio configs first
+            (preset: ResolutionPreset.veryHigh, audio: true),
+            (preset: ResolutionPreset.high, audio: true),
+            (preset: ResolutionPreset.high, audio: true),
+            // [FIX APPLIED] FAIL FAST: Removed silent fallback.
+            // If mic fails, we want _setupCamera to throw an exception so UI shows error.
+          ]
+        : [
+            // Default (Preview mode): Prefer NO AUDIO
+            (preset: ResolutionPreset.veryHigh, audio: false),
+            (preset: ResolutionPreset.high, audio: false),
+            (preset: ResolutionPreset.medium, audio: false),
+          ];
+
     for (final config in configs) {
       // Check if we were cancelled before each attempt
       if (generation != _initGeneration) return;
@@ -278,27 +290,32 @@ class CameraControllerNotifier extends StateNotifier<CameraState> {
         camera,
         config.preset,
         enableAudio: config.audio,
-        imageFormatGroup: Platform.isAndroid 
-            ? ImageFormatGroup.yuv420 
+        imageFormatGroup: Platform.isAndroid
+            ? ImageFormatGroup.yuv420
             : ImageFormatGroup.bgra8888,
       );
-      
+
       try {
         // ROBUSTNESS: 10s timeout prevents infinite hang on buggy drivers (Xiaomi/Oppo)
         await controller.initialize().timeout(
           const Duration(seconds: 10),
-          onTimeout: () => throw CameraException('TIMEOUT', 'Camera init timed out'),
+          onTimeout: () =>
+              throw CameraException('TIMEOUT', 'Camera init timed out'),
         );
-        
+
         // CRITICAL CHECK: Were we backgrounded/reset while initializing?
         if (generation != _initGeneration) {
-          debugPrint('Camera: Init completed for generation $generation but it is STALE. Disposing...');
+          debugPrint(
+            'Camera: Init completed for generation $generation but it is STALE. Disposing...',
+          );
           await controller.dispose();
           return;
         }
 
-        debugPrint('Camera initialized: ${config.preset.name}, audio=${config.audio}');
-        
+        debugPrint(
+          'Camera initialized: ${config.preset.name}, audio=${config.audio}',
+        );
+
         // CAPTURE ZOOM LIMITS
         double minZoomVal = 1.0;
         double maxZoomVal = 1.0;
@@ -322,20 +339,25 @@ class CameraControllerNotifier extends StateNotifier<CameraState> {
         );
         return; // Success
       } catch (e) {
-        debugPrint('Camera init failed: ${config.preset.name}, audio=${config.audio} - $e');
+        debugPrint(
+          'Camera init failed: ${config.preset.name}, audio=${config.audio} - $e',
+        );
         await controller.dispose();
-        
+
         if (config == configs.last && generation == _initGeneration) {
           state = state.copyWith(
-            error: 'Camera initialization failed. Check permissions and try again.',
+            error:
+                'Camera initialization failed. Check permissions and try again.',
           );
         }
       }
     }
-    
+
     // 4. PRE-WARM OPTIMIZATION: Prepare encoders if audio is enabled
     // This reduces startVideoRecording() latency from ~800ms to ~50ms
-    if (state.controller != null && state.isInitialized && (forceAudio || preWarmAudio)) {
+    if (state.controller != null &&
+        state.isInitialized &&
+        (forceAudio || preWarmAudio)) {
       try {
         await state.controller!.prepareForVideoRecording();
         debugPrint('Camera: Video pipeline pre-warmed and ready.');
@@ -352,13 +374,13 @@ class CameraControllerNotifier extends StateNotifier<CameraState> {
 
     final currentGen = ++_initGeneration;
     final currentController = state.controller;
-    
+
     // CAPTURE AUDIO STATE before killing the controller (Issue 3 fix)
     final bool wasAudioEnabled = currentController?.enableAudio ?? false;
-    
+
     // 1. Mark as initializing to prevent parallel calls
     _isInitializing = true;
-    
+
     // 2. Determine next camera before clearing state
     final newCamera = _cameras.firstWhere(
       (camera) => state.isFrontCamera
@@ -368,10 +390,7 @@ class CameraControllerNotifier extends StateNotifier<CameraState> {
     );
 
     // 3. IMMEDIATELY update state to remove the old controller
-    state = state.copyWith(
-      controller: null,
-      isInitialized: false,
-    );
+    state = state.copyWith(controller: null, isInitialized: false);
 
     try {
       // 4. Dispose safely
@@ -399,7 +418,7 @@ class CameraControllerNotifier extends StateNotifier<CameraState> {
   /// Toggle flash mode
   Future<void> toggleFlash() async {
     if (state.controller == null) return;
-    
+
     FlashMode nextMode;
     switch (state.flashMode) {
       case FlashMode.off:
@@ -414,7 +433,7 @@ class CameraControllerNotifier extends StateNotifier<CameraState> {
       default:
         nextMode = FlashMode.off;
     }
-    
+
     await state.controller!.setFlashMode(nextMode);
     state = state.copyWith(flashMode: nextMode);
   }
@@ -422,10 +441,10 @@ class CameraControllerNotifier extends StateNotifier<CameraState> {
   /// Set zoom level
   Future<void> setZoomLevel(double level) async {
     if (state.controller == null || !state.isInitialized) return;
-    
+
     // Clamp to hardware limits
     final clampedLevel = level.clamp(state.minZoom, state.maxZoom);
-    
+
     try {
       await state.controller!.setZoomLevel(clampedLevel);
       state = state.copyWith(zoomLevel: clampedLevel);
@@ -464,10 +483,10 @@ class CameraControllerNotifier extends StateNotifier<CameraState> {
     debugPrint('Camera: Resetting and incrementing generation');
     _initGeneration++; // Invalidate any pending initializations IMMEDIATELY
     _isInitializing = false;
-    
+
     final controller = state.controller;
     state = CameraState(); // Notify listeners FIRST to remove from tree
-    
+
     if (controller != null) {
       // DEFENSIVE: Stop stream before destroying hardware surface
       // Prevents "Surface abandoned" crashes on Samsung/Oppo

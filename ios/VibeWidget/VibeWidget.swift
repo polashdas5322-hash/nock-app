@@ -258,65 +258,14 @@ struct VibeTimelineProvider: AppIntentTimelineProvider {
     }
 }
 
-// MARK: - Play Audio Intent (Interactive Widget - iOS 17+)
-@available(iOS 17.0, *)
-struct PlayVibeIntent: AppIntent {
-    static var title: LocalizedStringResource = "Play Vibe"
-    static var description = IntentDescription("Plays the audio message from the widget")
-    
-    @Parameter(title: "Audio URL")
-    var audioUrl: String
-    
-    @Parameter(title: "Vibe ID")
-    var vibeId: String
-    
-    init() {
-        self.audioUrl = ""
-        self.vibeId = ""
-    }
-    
-    init(audioUrl: String, vibeId: String) {
-        self.audioUrl = audioUrl
-        self.vibeId = vibeId
-    }
-    
-    func perform() async throws -> some IntentResult {
-        // In iOS 17+, we can use AudioPlaybackIntent for background audio
-        // For now, open the app with deep link
-        
-        // Update UserDefaults to mark as played
-        let sharedDefaults = UserDefaults(suiteName: "group.com.nock.nock")
-        sharedDefaults?.set(true, forKey: "isPlayed")
-        
-        // CRITICAL FIX: Store pending read receipt for sync to Firestore
-        // The main app will read this on launch and sync to Firestore
-        // NOTE: Store as JSON string for HomeWidget compatibility
-        // Flutter's HomeWidget.getWidgetData() reads String, not StringArray
-        var pendingReceipts = sharedDefaults?.stringArray(forKey: "pending_read_receipts") ?? []
-        if !pendingReceipts.contains(vibeId) {
-            pendingReceipts.append(vibeId)
-            sharedDefaults?.set(pendingReceipts, forKey: "pending_read_receipts")
-            
-            // ALSO store as JSON string for Flutter HomeWidget compatibility
-            if let jsonData = try? JSONSerialization.data(withJSONObject: pendingReceipts),
-               let jsonString = String(data: jsonData, encoding: .utf8) {
-                sharedDefaults?.set(jsonString, forKey: "pending_read_receipts_json")
-            }
-        }
-        
-        // Trigger widget refresh
-        WidgetCenter.shared.reloadTimelines(ofKind: "VibeWidget")
-        
-        // In production, use AudioPlaybackIntent to play audio in background
-        // For MVP, open the app
-        return .result()
-    }
-}
+
 
 // MARK: - Widget View
 struct VibeWidgetEntryView: View {
     var entry: VibeTimelineProvider.Entry
     @Environment(\.widgetFamily) var family
+    // iOS 18+ Tinted Mode Support
+    @Environment(\.widgetRenderingMode) var renderingMode
 
     var body: some View {
         // LOCK SCREEN WIDGET: Compact circular/rectangular view for iOS 16+ Lock Screen
@@ -422,33 +371,38 @@ struct VibeWidgetEntryView: View {
             }
         }
     }
-    
-    // MARK: - Home Screen Widget View (Original)
+    // MARK: - Home Screen Widget View
     private var homeScreenView: some View {
+        // Main Container
         ZStack {
-            // Background - CRITICAL: Use localImageURL for 0-RAM timeline caching
-            if let vibeData = entry.vibeData {
-                if let localURL = vibeData.localImageURL,
-                   let uiImage = UIImage(contentsOfFile: localURL.path) {
+            // Background Layer
+            if let vibeData = entry.vibeData, let uiImage = UIImage(contentsOfFile: vibeData.localImageURL?.path ?? "") {
+                // Check if we are in "Tinted" / "Accented" mode (iOS 18+)
+                if #available(iOS 18.0, *), renderingMode == .accented {
+                    // TINTED MODE: Hide full color photo, show abstract or simplified view
+                    // Photos look bad when desaturated by the OS tint filter.
+                    // Instead, we show a clean container that takes the system tint.
+                    ContainerRelativeShape()
+                        .fill(Color(hex: "121226").opacity(0.3))
+                } else {
+                    // STANDARD MODE: Show full bleed photo
                     Image(uiImage: uiImage)
                         .resizable()
                         .aspectRatio(contentMode: .fill)
-                } else {
-                    gradientBackground
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                        .clipped()
+                        .overlay(
+                            LinearGradient(
+                                gradient: Gradient(colors: [.black.opacity(0.6), .clear, .black.opacity(0.8)]),
+                                startPoint: .top,
+                                endPoint: .bottom
+                            )
+                        )
                 }
             } else {
+                // Fallback / No Data
                 gradientBackground
             }
-            
-            // Overlay gradient for text readability
-            LinearGradient(
-                gradient: Gradient(colors: [
-                    Color.clear,
-                    Color(hex: "121226").opacity(0.8)
-                ]),
-                startPoint: .top,
-                endPoint: .bottom
-            )
             
             // 🎬 4-State Widget Protocol: Content Type Overlays
             if let vibeData = entry.vibeData {
@@ -566,7 +520,9 @@ struct VibeWidgetEntryView: View {
                     
                     HStack(spacing: 12) {
                         // Play button
-                        if entry.vibeData != nil {
+                        // CRITICAL FIX: Only show if there is audio/video to play
+                        // "Image Only" vibes should not show a play button.
+                        if let vibeData = entry.vibeData, !vibeData.audioUrl.isEmpty {
                             playButton
                         }
                         
@@ -600,11 +556,9 @@ struct VibeWidgetEntryView: View {
     @ViewBuilder
     private var playButton: some View {
         if #available(iOS 17.0, *) {
-            // CRITICAL FIX: Use VibeAudioPlaybackIntent (AudioPlaybackIntent protocol)
-            // NOT PlayVibeIntent which only updates UserDefaults without playing audio.
-            // AudioPlaybackIntent grants iOS background audio entitlement needed to
-            // keep the process alive while audio plays.
-            Button(intent: VibeAudioPlaybackIntent(
+            // CRITICAL FIX: Use PlayVibeIntent (AudioPlaybackIntent protocol)
+            // Grants iOS background audio entitlement needed to keep process alive.
+            Button(intent: PlayVibeIntent(
                 audioUrl: entry.vibeData?.audioUrl ?? "",
                 senderName: entry.vibeData?.senderName ?? "Vibe",
                 vibeId: entry.vibeData?.vibeId ?? ""

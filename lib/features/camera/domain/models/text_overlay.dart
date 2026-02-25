@@ -3,24 +3,29 @@ import '../../../../core/theme/app_typography.dart';
 
 /// Font styles for NoteIt-style text editing
 enum TextFontStyle {
-  classic,    // Clean sans-serif
+  classic, // Clean sans-serif
   handwritten, // Playful handwritten
-  bold,       // Heavy impact
-  retro,      // Monospace/retro
-  neon,       // Glowing effect
+  bold, // Heavy impact
+  retro, // Monospace/retro
+  neon, // Glowing effect
 }
 
 extension TextFontStyleExtension on TextFontStyle {
   String get displayName {
     switch (this) {
-      case TextFontStyle.classic: return 'Classic';
-      case TextFontStyle.handwritten: return 'Script';
-      case TextFontStyle.bold: return 'Bold';
-      case TextFontStyle.retro: return 'Retro';
-      case TextFontStyle.neon: return 'Neon';
+      case TextFontStyle.classic:
+        return 'Classic';
+      case TextFontStyle.handwritten:
+        return 'Script';
+      case TextFontStyle.bold:
+        return 'Bold';
+      case TextFontStyle.retro:
+        return 'Retro';
+      case TextFontStyle.neon:
+        return 'Neon';
     }
   }
-  
+
   TextStyle getStyle(double fontSize, Color color) {
     switch (this) {
       case TextFontStyle.classic:
@@ -61,7 +66,7 @@ extension TextFontStyleExtension on TextFontStyle {
 }
 
 /// A text overlay item with font style support
-/// 
+///
 /// IMPORTANT: [position] must be stored as normalized coordinates (0.0 to 1.0)
 /// relative to the capture area width and height.
 class TextOverlay {
@@ -82,7 +87,7 @@ class TextOverlay {
     this.scale = 1.0,
     this.rotation = 0.0,
   });
-  
+
   /// Create a copy with updated properties
   TextOverlay copyWith({
     String? text,

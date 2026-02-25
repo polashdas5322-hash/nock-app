@@ -8,7 +8,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import '../constants/app_constants.dart';
 
 /// Subscription Service
-/// 
+///
 /// Manages RevenueCat integration for VIBE+ subscriptions.
 class SubscriptionService {
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
@@ -29,10 +29,12 @@ class SubscriptionService {
     if (configuration != null) {
       // 🛡️ STABILITY FIX: Don't configure if API Key is empty (prevents Native crash/exception)
       if (configuration.apiKey.isEmpty) {
-        debugPrint('⚠️ SubscriptionService: RevenueCat API Key is missing. Subscription features will be disabled.');
+        debugPrint(
+          '⚠️ SubscriptionService: RevenueCat API Key is missing. Subscription features will be disabled.',
+        );
         return;
       }
-      
+
       try {
         await Purchases.configure(configuration);
         _setupCustomerInfoListener();
@@ -64,16 +66,19 @@ class SubscriptionService {
   Future<bool> purchasePackage(String productId) async {
     try {
       final offerings = await Purchases.getOfferings();
-      
-      if (offerings.current != null && offerings.current!.availablePackages.isNotEmpty) {
+
+      if (offerings.current != null &&
+          offerings.current!.availablePackages.isNotEmpty) {
         // Find the specific product requested
         final package = offerings.current!.availablePackages.firstWhere(
           (pkg) => pkg.storeProduct.identifier == productId,
           orElse: () => offerings.current!.availablePackages.first,
         );
 
-        debugPrint('SubscriptionService: Attempting purchase of ${package.storeProduct.identifier}');
-        
+        debugPrint(
+          'SubscriptionService: Attempting purchase of ${package.storeProduct.identifier}',
+        );
+
         // 1. Attempt the purchase
         final PurchaseResult result = await Purchases.purchase(
           PurchaseParams.package(package),
@@ -93,7 +98,7 @@ class SubscriptionService {
         debugPrint('SubscriptionService: Purchase cancelled by user');
         return false; // Safe exit, no crash
       }
-      
+
       // 4. Handle actual errors (network, invalid credentials, etc.)
       debugPrint('SubscriptionService: Purchase error: ${e.message}');
       rethrow;
@@ -102,20 +107,28 @@ class SubscriptionService {
 
   /// Sync entitlement status with Firestore Firestore
   Future<bool> _syncEntitlementStatus(CustomerInfo customerInfo) async {
-    final isPremium = customerInfo.entitlements.all[AppConstants.premiumEntitlementId]?.isActive ?? false;
-    
+    final isPremium =
+        customerInfo
+            .entitlements
+            .all[AppConstants.premiumEntitlementId]
+            ?.isActive ??
+        false;
+
     final user = _auth.currentUser;
     if (user != null) {
       try {
-        await _firestore.collection(AppConstants.usersCollection).doc(user.uid).update({
-          'isPremium': isPremium,
-        });
-        debugPrint('SubscriptionService: Synced premium status ($isPremium) for user ${user.uid}');
+        await _firestore
+            .collection(AppConstants.usersCollection)
+            .doc(user.uid)
+            .update({'isPremium': isPremium});
+        debugPrint(
+          'SubscriptionService: Synced premium status ($isPremium) for user ${user.uid}',
+        );
       } catch (e) {
         debugPrint('SubscriptionService: Error syncing with Firestore: $e');
       }
     }
-    
+
     return isPremium;
   }
 }

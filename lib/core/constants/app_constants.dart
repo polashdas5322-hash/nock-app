@@ -38,26 +38,31 @@ class AppConstants {
   static const String subscriptionMonthlyId = 'vibe_plus_monthly';
   static const String subscriptionWeeklyId = 'vibe_plus_weekly';
   static const String subscriptionAnnualId = 'vibe_plus_annual';
-  
+
   static const String premiumEntitlementId = 'premium_entitlement';
-  
+
   static const double priceMonthly = 4.99;
   static const double priceWeekly = 0.99;
   static const double priceAnnual = 29.99;
 
   // RevenueCat Keys (Provide via --dart-define or secure config)
-  static const String rcAppleApiKey = String.fromEnvironment('RC_APPLE_API_KEY', defaultValue: '');
-  static const String rcGoogleApiKey = String.fromEnvironment('RC_GOOGLE_API_KEY', defaultValue: '');
+  static const String rcAppleApiKey = String.fromEnvironment(
+    'RC_APPLE_API_KEY',
+    defaultValue: '',
+  );
+  static const String rcGoogleApiKey = String.fromEnvironment(
+    'RC_GOOGLE_API_KEY',
+    defaultValue: '',
+  );
 
   // AI Keys (Provide via --dart-define or secure config)
-  static const String openAiApiKey = String.fromEnvironment('OPENAI_API_KEY', defaultValue: '');
+  static const String openAiApiKey = String.fromEnvironment(
+    'OPENAI_API_KEY',
+    defaultValue: '',
+  );
 
   // Time Values
   static const int widgetUpdateIntervalMinutes = 15;
-  
-  /// 🌱 Friendship Garden: Days until garden goes dormant (paused, not dead)
-  /// After this many days, the garden merely "rests" - one vibe revives it!
-  static const int gardenDormantDays = 3;
 
   // Animation Durations
   static const Duration animFast = Duration(milliseconds: 150);

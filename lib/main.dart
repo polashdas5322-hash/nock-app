@@ -30,7 +30,7 @@ void main() async {
     const SystemUiOverlayStyle(
       statusBarColor: Colors.transparent,
       statusBarIconBrightness: Brightness.light,
-      systemNavigationBarColor: Color(0xFF121212),
+      systemNavigationBarColor: AppColors.voidNavy,
       systemNavigationBarIconBrightness: Brightness.light,
     ),
   );
@@ -53,20 +53,14 @@ void main() async {
   // Instead, ask AFTER first vibe is sent (contextual permission priming)
   // See: preview_screen.dart _askForNotificationsContextually()
 
-  
   // REMOVED: _syncPendingReadReceipts() - Race Condition Fix
   // The sync is now handled reactively in HomeScreen via ref.listen on currentUserProvider.
   // This fixes the race condition where authStateChanges().first could timeout on slow devices.
   // See: lib/features/home/presentation/home_screen.dart - build() method
 
   // Run the app
-  runApp(
-    const ProviderScope(
-      child: NockApp(),
-    ),
-  );
+  runApp(const ProviderScope(child: NockApp()));
 }
-
 
 // REMOVED: _syncPendingReadReceipts() function
 // The blocking auth check with timeout was causing silent failures on slow devices.
@@ -88,37 +82,40 @@ class NockApp extends ConsumerStatefulWidget {
 }
 
 class _NockAppState extends ConsumerState<NockApp> {
-  // Track initialization state
-  bool _isInitialized = false;
+  // 🚀 OPTIMIZATION: Removed _isInitialized state.
+  // The app should render the UI immediately. Services load in background.
 
   @override
   void initState() {
     super.initState();
-    // Start initialization immediately (not in addPostFrameCallback)
-    _initApp();
+    // Fire-and-forget background initialization
+    _initBackgroundServices();
   }
-  
-  Future<void> _initApp() async {
+
+  /// Initialize non-critical services in the background without blocking UI
+  Future<void> _initBackgroundServices() async {
+    // Small delay to let the UI frame render first
+    await Future.delayed(const Duration(milliseconds: 100));
+
     try {
       final router = ref.read(routerProvider);
-      
+
       // Initialize deep link handling
       final deepLinkService = ref.read(deepLinkServiceProvider);
       await deepLinkService.initialize(router);
-      
+
       // Initialize FCM with router
       final fcmService = ref.read(fcmTokenServiceProvider);
       await fcmService.initialize(router: router);
 
-      // Initialize Cache & Subscription services
+      // Initialize Cache & Subscription services (Background)
       final cacheService = ref.read(cacheCleanupServiceProvider);
-      await cacheService.initialize();
-      
+      cacheService.initialize(); // Fire & Forget
+
       final subscriptionService = ref.read(subscriptionServiceProvider);
-      await subscriptionService.initialize();
+      subscriptionService.initialize(); // Fire & Forget
 
       // 🧹 STORAGE HYGIENE: Clean up orphaned ghost recordings (Fire & Forget)
-      // We don't await this to keep app startup instant. It runs in background.
       StorageHygieneService.cleanOrphanedRecordings();
 
       // Audio Focus & Session (Best Practice)
@@ -127,41 +124,17 @@ class _NockAppState extends ConsumerState<NockApp> {
       // Sync theme colors to native widgets
       await AppColors.syncThemeWithWidgets();
 
+      debugPrint('🚀 App: Background initialization complete');
     } catch (e) {
-      debugPrint('Service initialization error: $e');
-    } finally {
-      // Mark as initialized regardless of success/failure to unblock app
-      if (mounted) {
-        setState(() {
-          _isInitialized = true;
-        });
-      }
+      debugPrint('⚠️ App: Service initialization error: $e');
     }
   }
 
   @override
   Widget build(BuildContext context) {
-    // 1. BLOCK the app until services are ready
-    if (!_isInitialized) {
-      // Return a simple loading screen
-      // This prevents the Router from even existing yet
-      return MaterialApp(
-        debugShowCheckedModeBanner: false,
-        theme: ThemeData(
-          scaffoldBackgroundColor: AppColors.background,
-        ),
-        home: const Scaffold(
-          body: Center(
-            child: CircularProgressIndicator(
-              color: AppColors.primaryAction,
-              strokeWidth: 3,
-            ),
-          ),
-        ),
-      );
-    }
-
-    // 2. Services are ready: Render the real app with Router
+    // 🎨 UX OPTIMIZATION: IsInitialized check REMOVED.
+    // The router provider is watched immediately. The Router itself handles
+    // redirecting to splash/loading states if Auth/Onboarding are loading.
     final router = ref.watch(routerProvider);
 
     return MaterialApp.router(
@@ -170,18 +143,9 @@ class _NockAppState extends ConsumerState<NockApp> {
       theme: AppTheme.darkTheme,
       routerConfig: router,
       builder: (context, child) {
-        // ACCESSIBILITY FIX: Allow text scaling but cap it to prevent layout breaks
-        final textScaler = MediaQuery.textScalerOf(context);
-        return AudioLifecycleManager(
-          child: MediaQuery(
-            data: MediaQuery.of(context).copyWith(
-              textScaler: textScaler.clamp(maxScaleFactor: 1.3),
-            ),
-            child: child ?? const SizedBox(),
-          ),
-        );
+        // ACCESSIBILITY FIX: Full Dynamic Type support enabled
+        return AudioLifecycleManager(child: child ?? const SizedBox());
       },
     );
   }
 }
-

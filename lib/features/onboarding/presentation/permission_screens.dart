@@ -1,6 +1,8 @@
+import 'package:nock/core/theme/app_icons.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:nock/core/services/contacts_sync_service.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:nock/core/theme/app_colors.dart';
 import 'package:nock/core/theme/app_typography.dart';
@@ -46,7 +48,7 @@ class _PermissionScreenState extends ConsumerState<PermissionScreen>
     super.initState();
     // FIX: Register as observer to detect when user returns from Settings
     WidgetsBinding.instance.addObserver(this);
-    
+
     _pulseController = AnimationController(
       duration: const Duration(milliseconds: 2000),
       vsync: this,
@@ -69,7 +71,7 @@ class _PermissionScreenState extends ConsumerState<PermissionScreen>
     _pulseController.dispose();
     super.dispose();
   }
-  
+
   // FIX: Auto-check permission when user returns from Settings
   // Without this, users get trapped on the permission screen
   @override
@@ -105,10 +107,7 @@ class _PermissionScreenState extends ConsumerState<PermissionScreen>
       context: context,
       builder: (context) => AlertDialog(
         backgroundColor: AppColors.surface,
-        title: Text(
-          'Permission Needed',
-          style: AppTypography.headlineMedium,
-        ),
+        title: Text('Permission Needed', style: AppTypography.headlineMedium),
         content: Text(
           '${widget.title} permission is required for the best Vibe experience. Would you like to try again?',
           style: AppTypography.bodyMedium,
@@ -142,10 +141,7 @@ class _PermissionScreenState extends ConsumerState<PermissionScreen>
       context: context,
       builder: (dialogContext) => AlertDialog(
         backgroundColor: AppColors.surface,
-        title: Text(
-          'Permission Required',
-          style: AppTypography.headlineMedium,
-        ),
+        title: Text('Permission Required', style: AppTypography.headlineMedium),
         content: Text(
           '${widget.title} permission was permanently denied. Please enable it in Settings to continue, or skip to use limited functionality.',
           style: AppTypography.bodyMedium,
@@ -196,10 +192,7 @@ class _PermissionScreenState extends ConsumerState<PermissionScreen>
                     child: Stack(
                       alignment: Alignment.center,
                       children: [
-                        AuraVisualization(
-                          size: 200,
-                          mood: widget.mood,
-                        ),
+                        AuraVisualization(size: 200, mood: widget.mood),
                         Container(
                           width: 80,
                           height: 80,
@@ -272,10 +265,7 @@ class _PermissionScreenState extends ConsumerState<PermissionScreen>
                             strokeWidth: 2,
                           ),
                         )
-                      : Text(
-                          widget.title,
-                          style: AppTypography.buttonText,
-                        ),
+                      : Text(widget.title, style: AppTypography.buttonText),
                 ),
               ),
 
@@ -288,78 +278,201 @@ class _PermissionScreenState extends ConsumerState<PermissionScreen>
   }
 }
 
-/// Microphone Permission Screen
-class MicrophonePermissionScreen extends StatelessWidget {
-  const MicrophonePermissionScreen({super.key});
-
-  @override
-  Widget build(BuildContext context) {
-    return const PermissionScreen(
-      title: 'Hear Your Friends',
-      subtitle: 'Allow Microphone Access',
-      description:
-          'Nock uses your microphone to record voice notes. Share your thoughts, not just photos.',
-      icon: Icons.mic,
-      permission: Permission.microphone,
-      nextRoute: AppRoutes.permissionNotification,
-      mood: AuraMood.happy,
-    );
-  }
-}
-
-/// Notification Permission Screen
-class NotificationPermissionScreen extends StatelessWidget {
-  const NotificationPermissionScreen({super.key});
-
-  @override
-  Widget build(BuildContext context) {
-    return const PermissionScreen(
-      title: 'Know When They Speak',
-      subtitle: 'Allow Notifications',
-      description:
-          'Get notified instantly when your friends send you a vibe. Never miss a moment.',
-      icon: Icons.notifications_active,
-      permission: Permission.notification,
-      nextRoute: AppRoutes.permissionCamera,
-      mood: AuraMood.excited,
-    );
-  }
-}
-
-/// Camera Permission Screen
-class CameraPermissionScreen extends StatelessWidget {
-  const CameraPermissionScreen({super.key});
-
-  @override
-  Widget build(BuildContext context) {
-    return const PermissionScreen(
-      title: 'Capture Moments',
-      subtitle: 'Allow Camera Access',
-      description:
-          'Take photos to share with your voice notes. Show them what you see.',
-      icon: Icons.camera_alt,
-      permission: Permission.camera,
-      nextRoute: AppRoutes.permissionContacts,
-      mood: AuraMood.calm,
-    );
-  }
-}
-
-/// Contacts Permission Screen
-class ContactsPermissionScreen extends StatelessWidget {
+/// THE SQUAD SCREEN (Step 2 of 4)
+///
+/// "Build your inner circle."
+///
+/// This screen replaces the generic "Contacts Permission" screen.
+/// Ideally, it should show a preview of friends already on Nock (if we had the graph).
+/// Since we don't have permissions yet, we use social proof copy.
+class ContactsPermissionScreen extends ConsumerStatefulWidget {
   const ContactsPermissionScreen({super.key});
 
   @override
+  ConsumerState<ContactsPermissionScreen> createState() =>
+      _ContactsPermissionScreenState();
+}
+
+class _ContactsPermissionScreenState
+    extends ConsumerState<ContactsPermissionScreen> {
+  bool _isLoading = false;
+
+  Future<void> _requestPermission() async {
+    setState(() => _isLoading = true);
+
+    // 1. Request Permission
+    // "Find Friends" -> Triggers system dialog
+    final status = await Permission.contacts.request();
+
+    if (status.isGranted) {
+      // 2. Sync Contacts (Background)
+      // We don't block navigation on this, but we kick it off.
+      // The Next screen (Widget) or Home will eventually show the results.
+      ref.read(contactsSyncServiceProvider).syncContacts();
+
+      if (mounted) {
+        // 3. Navigate to Step 3: Magic (Widget)
+        context.go(AppRoutes.widgetSetup);
+      }
+    } else {
+      // Permission denied
+      // We still let them proceed, but maybe show a dialog or just move on.
+      // Progressive Disclosure means we don't block them forever.
+      if (mounted) {
+        setState(() => _isLoading = false);
+        // Optional: Show "You can add friends later" snackbar?
+        // For now, simple progression.
+        context.go(AppRoutes.widgetSetup);
+      }
+    }
+  }
+
+  void _skip() {
+    // skip logic
+    context.go(AppRoutes.widgetSetup);
+  }
+
+  @override
   Widget build(BuildContext context) {
-    return const PermissionScreen(
-      title: 'Find Your Squad',
-      subtitle: 'Allow Contacts Access',
-      description:
-          'Find friends who already use Vibe. Your contacts stay on your device and are never uploaded.',
-      icon: Icons.people,
-      permission: Permission.contacts,
-      nextRoute: AppRoutes.widgetSetup,
-      mood: AuraMood.neutral,
+    return Scaffold(
+      backgroundColor: AppColors.background,
+      body: Stack(
+        children: [
+          // Ambient Background
+          Positioned.fill(
+            child: Container(
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  begin: Alignment.topCenter,
+                  end: Alignment.bottomCenter,
+                  colors: [
+                    AppColors.vibePrimary.withOpacity(0.1),
+                    AppColors.background,
+                  ],
+                ),
+              ),
+            ),
+          ),
+
+          SafeArea(
+            child: Padding(
+              padding: const EdgeInsets.symmetric(
+                horizontal: 24.0,
+                vertical: 16.0,
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.center,
+                children: [
+                  const Spacer(flex: 1),
+
+                  // Hero Image / Icon
+                  // Using a large, friendly icon or illustration
+                  Container(
+                    width: 120,
+                    height: 120,
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      color: AppColors.surface,
+                      boxShadow: [
+                        BoxShadow(
+                          color: AppColors.shadow,
+                          blurRadius: 20,
+                          offset: const Offset(0, 10),
+                        ),
+                      ],
+                    ),
+                    child: Icon(
+                      AppIcons.peopleAlt,
+                      size: 64,
+                      color: AppColors.vibePrimary,
+                    ),
+                  ),
+
+                  const SizedBox(height: 40),
+
+                  // Headline
+                  Text(
+                    'Your Squad',
+                    style: AppTypography.displaySmall.copyWith(
+                      color: AppColors.textPrimary,
+                      letterSpacing: -0.5,
+                    ),
+                  ),
+
+                  const SizedBox(height: 16),
+
+                  // Body Copy
+                  Text(
+                    'See which of your friends are already here. Nock is better together.',
+                    textAlign: TextAlign.center,
+                    style: AppTypography.bodyLarge.copyWith(
+                      height: 1.5,
+                      color: AppColors.textSecondary,
+                    ),
+                  ),
+
+                  const Spacer(flex: 2),
+
+                  // Primary Action
+                  SizedBox(
+                    width: double.infinity,
+                    height: 56,
+                    child: ElevatedButton(
+                      onPressed: _isLoading ? null : _requestPermission,
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: AppColors.vibePrimary,
+                        foregroundColor: AppColors.textInverse,
+                        elevation: 0,
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(16),
+                        ),
+                      ),
+                      child: _isLoading
+                          ? const SizedBox(
+                              width: 24,
+                              height: 24,
+                              child: CircularProgressIndicator(
+                                color: AppColors.textInverse,
+                                strokeWidth: 2,
+                              ),
+                            )
+                          : Text(
+                              'Find My Friends',
+                              style: AppTypography.buttonText.copyWith(
+                                fontSize: 18,
+                              ),
+                            ),
+                    ),
+                  ),
+
+                  const SizedBox(height: 16),
+
+                  // Secondary Action (Skip)
+                  TextButton(
+                    onPressed: _skip,
+                    child: Text(
+                      'Skip for now',
+                      style: AppTypography.bodyMedium.copyWith(
+                        color: AppColors.textSecondary,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ),
+
+                  const Spacer(flex: 1),
+
+                  const SizedBox(height: 16),
+                ],
+              ),
+            ),
+          ),
+        ],
+      ),
     );
   }
 }
+
+// 🗑️ DEPRECATED SCREENS REMOVED:
+// - MicrophonePermissionScreen (Now contextual in CameraScreenNew)
+// - CameraPermissionScreen (Now contextual in CameraScreenNew)
+// - NotificationPermissionScreen (Now contextual in PreviewScreen)

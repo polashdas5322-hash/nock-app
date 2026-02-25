@@ -1,17 +1,19 @@
-import 'dart:async';
+import 'package:nock/core/theme/app_icons.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:go_router/go_router.dart';
-import 'package:home_widget/home_widget.dart';
+import 'dart:io';
+
 import 'package:nock/core/theme/app_colors.dart';
 import 'package:nock/core/theme/app_typography.dart';
-import 'package:nock/core/constants/app_routes.dart';
-import 'package:nock/shared/widgets/glass_container.dart';
 import 'package:nock/core/providers/onboarding_provider.dart';
+import 'package:nock/shared/widgets/glass_container.dart';
 
-/// Widget Setup Screen - Forces user to install the widget before entering the app
-/// This is the "Widget Lockout" from the design specification
+/// THE MAGIC SCREEN (Step 3 of 4)
+///
+/// "Make your home screen alive."
+///
+/// This screen guides the user to add the widget.
+/// We use an "Honest Button" ("I've added it") because programmatic detection is unreliable.
 class WidgetSetupScreen extends ConsumerStatefulWidget {
   const WidgetSetupScreen({super.key});
 
@@ -19,303 +21,221 @@ class WidgetSetupScreen extends ConsumerStatefulWidget {
   ConsumerState<WidgetSetupScreen> createState() => _WidgetSetupScreenState();
 }
 
-class _WidgetSetupScreenState extends ConsumerState<WidgetSetupScreen>
-    with TickerProviderStateMixin {
-  late AnimationController _pulseController;
-  late AnimationController _bounceController;
-  bool _widgetInstalled = false;
-  Timer? _checkTimer;
-
-  @override
-  void initState() {
-    super.initState();
-    _pulseController = AnimationController(
-      duration: const Duration(milliseconds: 2000),
-      vsync: this,
-    )..repeat(reverse: true);
-
-    _bounceController = AnimationController(
-      duration: const Duration(milliseconds: 1000),
-      vsync: this,
-    )..repeat(reverse: true);
-
-    // Removed: _startWidgetCheck() - replaced with honest "I've Added It" button
-    // iOS/Android cannot reliably detect if a widget is installed
-    // Showing "Waiting for widget..." when it will never detect is misleading UX
-  }
-
-  /// Mark widget as installed (user confirmation)
-  /// This replaces the fake auto-detection that never worked
-  void _confirmWidgetAdded() {
-    setState(() => _widgetInstalled = true);
-    // Haptic feedback for confirmation
-    HapticFeedback.mediumImpact();
-  }
+class _WidgetSetupScreenState extends ConsumerState<WidgetSetupScreen> {
+  bool _isChecking = false;
 
   Future<void> _finishOnboarding() async {
-    debugPrint('🏁 WidgetSetup: Finishing onboarding...');
-    await ref.read(onboardingStateProvider.notifier).completeOnboarding();
-    debugPrint('🏁 WidgetSetup: Onboarding marked complete, navigating to home...');
-    
-    // CRITICAL: Must explicitly navigate after completing onboarding
-    // The router redirect only fires when navigating TO a route, not on state changes
-    if (mounted) {
-      context.go(AppRoutes.home);
-    }
-  }
+    setState(() => _isChecking = true);
 
-  @override
-  void dispose() {
-    _pulseController.dispose();
-    _bounceController.dispose();
-    _checkTimer?.cancel();
-    super.dispose();
+    // 1. Mark onboarding as complete
+    // The AppRouter is watching this provider and will automatically
+    // redirect to Home when this completes.
+    // REMOVED: context.go(AppRoutes.home) to avoid Double Navigation Race Condition.
+    await ref.read(onboardingStateProvider.notifier).completeOnboarding();
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: AppColors.background,
-      body: SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.all(24),
-          child: ListView(
-            children: [
-              // Skip for demo (remove in production)
-              Align(
-                alignment: Alignment.topRight,
-                child: TextButton(
-                  onPressed: () => context.go(AppRoutes.welcome),
-                  child: Text(
-                    'Skip (Demo)',
-                    style: AppTypography.labelMedium.copyWith(
-                      color: AppColors.textTertiary,
-                    ),
-                  ),
-                ),
-              ),
-
-              const SizedBox(height: 24),
-
-              // Title
-              Text(
-                'Add the Widget',
-                style: AppTypography.displaySmall,
-                textAlign: TextAlign.center,
-              ),
-
-              const SizedBox(height: 12),
-
-              Text(
-                'The magic happens on your home screen',
-                style: AppTypography.bodyLarge.copyWith(
-                  color: AppColors.textSecondary,
-                ),
-                textAlign: TextAlign.center,
-              ),
-
-              const SizedBox(height: 40),
-
-              // Widget preview
-              Center(child: _buildWidgetPreview()),
-
-              const SizedBox(height: 32),
-
-              // Instructions
-              GlassContainer(
-                padding: const EdgeInsets.all(20),
-                child: Column(
-                  children: [
-                    _buildStep(1, 'Long press on your home screen'),
-                    const SizedBox(height: 16),
-                    _buildStep(2, 'Tap the "+" button or "Widgets"'),
-                    const SizedBox(height: 16),
-                    _buildStep(3, 'Find and add the Vibe widget'),
-                  ],
-                ),
-              ),
-
-              const SizedBox(height: 40),
-
-              // HONEST UX: "I've Added It" confirmation button
-              if (!_widgetInstalled) ...[
-                // Confirmation button
-                SizedBox(
-                  width: double.infinity,
-                  child: OutlinedButton.icon(
-                    onPressed: _confirmWidgetAdded,
-                    icon: const Icon(Icons.check, color: AppColors.primaryAction),
-                    label: Text(
-                      "I've Added the Widget",
-                      style: AppTypography.buttonText.copyWith(
-                        color: AppColors.primaryAction,
-                      ),
-                    ),
-                    style: OutlinedButton.styleFrom(
-                      side: const BorderSide(color: AppColors.primaryAction, width: 2),
-                      padding: const EdgeInsets.symmetric(vertical: 16),
-                    ),
-                  ),
-                ),
-                const SizedBox(height: 16),
-              ] else ...[
-                // Success state
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    const Icon(Icons.check_circle, color: AppColors.success),
-                    const SizedBox(width: 8),
-                    Text(
-                      'Great! Widget confirmed ✓',
-                      style: AppTypography.bodyMedium.copyWith(
-                        color: AppColors.success,
-                      ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 16),
-              ],
-
-              // Continue button - ALWAYS enabled (App Store compliance)
-              SizedBox(
-                width: double.infinity,
-                child: ElevatedButton(
-                  onPressed: () => _finishOnboarding(),
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: _widgetInstalled 
-                        ? AppColors.primaryAction 
-                        : AppColors.surface,
-                    padding: const EdgeInsets.symmetric(vertical: 18),
-                  ),
-                  child: Text(
-                    _widgetInstalled ? 'Continue' : 'Skip for Now',
-                    style: AppTypography.buttonText.copyWith(
-                      color: _widgetInstalled 
-                          ? AppColors.background 
-                          : AppColors.textSecondary,
-                    ),
-                  ),
-                ),
-              ),
-
-              const SizedBox(height: 16),
-
-              // Manual continue option
-              Center(
-                child: TextButton(
-                  onPressed: () => _finishOnboarding(),
-                  child: Text(
-                    "I'll add it later",
-                    style: AppTypography.labelMedium.copyWith(
-                      color: AppColors.textTertiary,
-                    ),
-                  ),
-                ),
-              ),
-
-              const SizedBox(height: 16),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-
-  Widget _buildWidgetPreview() {
-    return GlassContainer(
-      width: 200,
-      height: 200,
-      borderRadius: 32,
-      showGlow: true,
-      glowColor: AppColors.primaryAction,
-      padding: const EdgeInsets.all(16),
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
+      body: Stack(
         children: [
-          // Fake profile picture
-          Container(
-            width: 100,
-            height: 100,
-            decoration: BoxDecoration(
-              shape: BoxShape.circle,
-              gradient: AppColors.auraGradient,
-              boxShadow: [
-                BoxShadow(
-                  color: AppColors.primaryAction.withOpacity(0.5),
-                  blurRadius: 20,
-                  spreadRadius: 5,
-                ),
-              ],
-            ),
-            child: const Icon(
-              Icons.person,
-              size: 50,
-              color: Colors.white,
-            ),
-          ),
-          const SizedBox(height: 16),
-          Text(
-            'Tap to play',
-            style: AppTypography.labelMedium.copyWith(
-              color: AppColors.textSecondary,
-            ),
-          ),
-          const SizedBox(height: 4),
-          Row(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Container(
-                width: 8,
-                height: 8,
-                decoration: const BoxDecoration(
-                  color: AppColors.success,
-                  shape: BoxShape.circle,
+          // Background Gradient
+          Positioned.fill(
+            child: Container(
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                  colors: [
+                    AppColors.vibeSecondary.withOpacity(0.15),
+                    AppColors.background,
+                  ],
                 ),
               ),
-              const SizedBox(width: 6),
-              Text(
-                'New Vibe',
-                style: AppTypography.labelSmall.copyWith(
-                  color: AppColors.success,
-                ),
+            ),
+          ),
+
+          SafeArea(
+            child: Padding(
+              padding: const EdgeInsets.symmetric(
+                horizontal: 24.0,
+                vertical: 16.0,
               ),
-            ],
+              child: Column(
+                children: [
+                  const Spacer(flex: 1),
+
+                  // Visual Preview (Phone Mockup or Illustration)
+                  _buildWidgetPreview(),
+
+                  const SizedBox(height: 40),
+
+                  // Copy
+                  Text('The Magic', style: AppTypography.displaySmall),
+                  const SizedBox(height: 12),
+                  Text(
+                    'Add the Nock widget to your home screen to see live moments from your squad.',
+                    textAlign: TextAlign.center,
+                    style: AppTypography.bodyMedium.copyWith(
+                      color: AppColors.textSecondary,
+                      height: 1.5,
+                    ),
+                  ),
+
+                  const Spacer(flex: 2),
+
+                  // Instructions (Platform Specific)
+                  _buildInstructions(),
+
+                  const SizedBox(height: 32),
+
+                  // Action: "I've added it"
+                  SizedBox(
+                    width: double.infinity,
+                    height: 56,
+                    child: ElevatedButton(
+                      onPressed: _isChecking ? null : _finishOnboarding,
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: AppColors.vibePrimary,
+                        foregroundColor: AppColors.textInverse,
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(16),
+                        ),
+                      ),
+                      child: _isChecking
+                          ? const CircularProgressIndicator(
+                              color: AppColors.textInverse,
+                            )
+                          : Text(
+                              "I've Added It",
+                              style: AppTypography.labelLarge.copyWith(
+                                fontSize: 18,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                    ),
+                  ),
+
+                  const SizedBox(height: 16),
+
+                  // Skip (Small)
+                  TextButton(
+                    onPressed: _finishOnboarding,
+                    child: Text(
+                      'Do it later',
+                      style: AppTypography.bodyMedium.copyWith(
+                        color: AppColors.textSecondary.withOpacity(0.7),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
           ),
         ],
       ),
     );
   }
 
-  Widget _buildStep(int number, String text) {
-    return Row(
-      children: [
-        Container(
-          width: 32,
-          height: 32,
-          decoration: BoxDecoration(
-            color: AppColors.primaryAction.withOpacity(0.2),
-            shape: BoxShape.circle,
-            border: Border.all(color: AppColors.primaryAction),
+  Widget _buildWidgetPreview() {
+    return Container(
+      width: 200,
+      height: 200,
+      decoration: BoxDecoration(
+        color: Colors.black,
+        borderRadius: BorderRadius.circular(32),
+        border: Border.all(color: AppColors.glassBorder, width: 2),
+        boxShadow: [
+          BoxShadow(
+            color: AppColors.vibePrimary.withOpacity(0.3),
+            blurRadius: 40,
+            offset: const Offset(0, 10),
           ),
-          child: Center(
+        ],
+      ),
+      // Mockup Content
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(30),
+        child: Stack(
+          fit: StackFit.expand,
+          children: [
+            // Placeholder Image
+            Container(color: AppColors.surface),
+
+            // "Camera" Icon in center
+            Center(
+              child: Icon(
+                AppIcons.camera,
+                size: 48,
+                color: AppColors.textSecondary.withOpacity(0.5),
+              ),
+            ),
+
+            // Overlay Text
+            Positioned(
+              bottom: 16,
+              left: 16,
+              right: 16,
+              child: GlassContainer(
+                padding: const EdgeInsets.symmetric(
+                  vertical: 8,
+                  horizontal: 12,
+                ),
+                child: Row(
+                  children: [
+                    Container(
+                      width: 24,
+                      height: 24,
+                      decoration: const BoxDecoration(
+                        color: AppColors.vibePrimary,
+                        shape: BoxShape.circle,
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    Text(
+                      'Sarah',
+                      style: AppTypography.labelSmall.copyWith(
+                        fontSize: 12,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildInstructions() {
+    final isIOS = Platform.isIOS;
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: AppColors.surface.withOpacity(0.5),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: AppColors.glassBorderLight),
+      ),
+      child: Row(
+        children: [
+          Icon(AppIcons.touch, color: AppColors.vibePrimary),
+          const SizedBox(width: 16),
+          Expanded(
             child: Text(
-              '$number',
-              style: AppTypography.labelLarge.copyWith(
-                color: AppColors.primaryAction,
+              isIOS
+                  ? 'Long press home screen → Tap + → Select Nock'
+                  : 'Long press home screen → Widgets → Nock',
+              style: AppTypography.bodyMedium.copyWith(
+                color: AppColors.textPrimary,
+                fontWeight: FontWeight.w500,
               ),
             ),
           ),
-        ),
-        const SizedBox(width: 16),
-        Expanded(
-          child: Text(
-            text,
-            style: AppTypography.bodyMedium.copyWith(
-              color: AppColors.textPrimary,
-            ),
-          ),
-        ),
-      ],
+        ],
+      ),
     );
   }
 }

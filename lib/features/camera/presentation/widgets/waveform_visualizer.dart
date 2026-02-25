@@ -4,8 +4,8 @@ import 'package:nock/core/services/audio_service.dart';
 import 'package:nock/core/theme/app_colors.dart';
 
 /// Isolated leaf widget for high-frequency waveform updates.
-/// 
-/// This prevents "Waveform Rebuild Storms" by containing the ref.watch 
+///
+/// This prevents "Waveform Rebuild Storms" by containing the ref.watch
 /// and isolating repaints via RepaintBoundary.
 class WaveformVisualizer extends ConsumerWidget {
   final int barCount;
@@ -38,22 +38,29 @@ class WaveformVisualizer extends ConsumerWidget {
           crossAxisAlignment: CrossAxisAlignment.center,
           children: List.generate(barCount, (index) {
             double value = 0.3; // Default resting height
-            
+
             if (waveformData.isNotEmpty) {
               final step = (waveformData.length / barCount).ceil();
-              final dataIndex = (index * step).clamp(0, waveformData.length - 1);
+              final dataIndex = (index * step).clamp(
+                0,
+                waveformData.length - 1,
+              );
               value = waveformData[dataIndex];
             }
-            
+
             final barHeight = (value * height).clamp(height * 0.2, height);
-            
+
             return AnimatedContainer(
               duration: const Duration(milliseconds: 150),
               margin: const EdgeInsets.symmetric(horizontal: 2),
               width: 3,
               height: barHeight,
               decoration: BoxDecoration(
-                color: color ?? (isPlaying ? AppColors.primaryAction : Colors.white.withOpacity(0.7)),
+                color:
+                    color ??
+                    (isPlaying
+                        ? AppColors.primaryAction
+                        : AppColors.textPrimary.withOpacity(0.7)),
                 borderRadius: BorderRadius.circular(2),
               ),
             );

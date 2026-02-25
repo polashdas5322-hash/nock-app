@@ -1,10 +1,13 @@
+import 'package:phosphor_flutter/phosphor_flutter.dart';
+import 'package:nock/core/theme/app_icons.dart';
+import 'package:nock/shared/widgets/app_icon.dart';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:nock/core/theme/app_colors.dart';
 import 'package:nock/core/theme/app_typography.dart';
-import 'package:nock/shared/widgets/glass_container.dart';
 import 'package:nock/core/constants/app_constants.dart';
 import '../../../core/services/subscription_service.dart';
 
@@ -23,13 +26,17 @@ class _SubscriptionScreenState extends ConsumerState<SubscriptionScreen> {
   Future<void> _handleRestore() async {
     setState(() => _isLoading = true);
     try {
-      final isPremium = await ref.read(subscriptionServiceProvider).restorePurchases();
+      final isPremium = await ref
+          .read(subscriptionServiceProvider)
+          .restorePurchases();
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text(isPremium 
-              ? 'Purchases restored successfully! Access granted.' 
-              : 'No active subscriptions found to restore.'),
+            content: Text(
+              isPremium
+                  ? 'Purchases restored successfully! Access granted.'
+                  : 'No active subscriptions found to restore.',
+            ),
           ),
         );
       }
@@ -47,18 +54,22 @@ class _SubscriptionScreenState extends ConsumerState<SubscriptionScreen> {
   Future<void> _handleSubscribe() async {
     setState(() => _isLoading = true);
     try {
-      final isPremium = await ref.read(subscriptionServiceProvider).purchasePackage(_selectedProductId);
+      final isPremium = await ref
+          .read(subscriptionServiceProvider)
+          .purchasePackage(_selectedProductId);
       if (isPremium && mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Welcome to VIBE+! Your memories are now safe.')),
+          const SnackBar(
+            content: Text('Welcome to VIBE+! Your memories are now safe.'),
+          ),
         );
         context.pop();
       }
     } on PlatformException catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Error: ${e.message}')),
-        );
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('Error: ${e.message}')));
       }
     } finally {
       if (mounted) setState(() => _isLoading = false);
@@ -75,16 +86,15 @@ class _SubscriptionScreenState extends ConsumerState<SubscriptionScreen> {
         actions: [
           IconButton(
             onPressed: () => context.pop(),
-            icon: const Icon(Icons.close, color: Colors.white),
+            icon: AppIcon(AppIcons.close, color: Colors.white),
           ),
         ],
         leading: TextButton(
           onPressed: _isLoading ? null : _handleRestore,
-          child: const Text(
+          child: Text(
             'Restore Purchases',
-            style: TextStyle(
+            style: AppTypography.labelSmall.copyWith(
               color: Colors.white70,
-              fontSize: 10,
               fontWeight: FontWeight.w600,
             ),
           ),
@@ -97,33 +107,52 @@ class _SubscriptionScreenState extends ConsumerState<SubscriptionScreen> {
             return SingleChildScrollView(
               padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
               child: ConstrainedBox(
-                constraints: BoxConstraints(minHeight: constraints.maxHeight - 24),
+                constraints: BoxConstraints(
+                  minHeight: constraints.maxHeight - 24,
+                ),
                 child: IntrinsicHeight(
                   child: Column(
                     children: [
                       const Spacer(),
-                      
+
                       // Logo
                       ShaderMask(
                         shaderCallback: (bounds) => const LinearGradient(
-                          colors: [AppColors.primaryAction, AppColors.secondaryAction],
+                          colors: [
+                            AppColors.primaryAction,
+                            AppColors.secondaryAction,
+                          ],
                         ).createShader(bounds),
                         child: Text(
                           'VIBE+',
-                          style: AppTypography.displayLarge.copyWith(height: 1.0),
+                          style: AppTypography.displayLarge.copyWith(
+                            height: 1.0,
+                          ),
                         ),
                       ),
-                      
+
                       const SizedBox(height: 32),
-                      
+
                       // Features - Loss Aversion Messaging
-                      _buildFeature(Icons.history, 'Don\'t let your history fade'),
-                      _buildFeature(Icons.all_inclusive, 'Unlock all memories in the vault'),
-                      _buildFeature(Icons.verified_user, 'Preserve your moments forever'),
-                      _buildFeature(Icons.auto_awesome, 'Coming Soon: Retro Rewinds'),
-                      
+                      _buildFeature(
+                        AppIcons.history,
+                        'Don\'t let your history fade',
+                      ),
+                      _buildFeature(
+                        AppIcons.unlock,
+                        'Unlock all memories in the vault',
+                      ),
+                      _buildFeature(
+                        AppIcons.verified,
+                        'Preserve your moments forever',
+                      ),
+                      _buildFeature(
+                        AppIcons.sparkle,
+                        'Coming Soon: Retro Rewinds',
+                      ),
+
                       const Spacer(),
-                      
+
                       // Tier Selection
                       Row(
                         children: [
@@ -150,16 +179,18 @@ class _SubscriptionScreenState extends ConsumerState<SubscriptionScreen> {
                           ),
                         ],
                       ),
-                      
+
                       const SizedBox(height: 16),
-                      
+
                       Text(
                         'Preserve your history. One tap to unlock.',
-                        style: AppTypography.bodySmall.copyWith(color: Colors.white70),
+                        style: AppTypography.bodySmall.copyWith(
+                          color: Colors.white70,
+                        ),
                       ),
-                      
+
                       const SizedBox(height: 24),
-                      
+
                       // Subscribe button
                       SizedBox(
                         width: double.infinity,
@@ -172,7 +203,9 @@ class _SubscriptionScreenState extends ConsumerState<SubscriptionScreen> {
                               borderRadius: BorderRadius.circular(16),
                             ),
                             elevation: 8,
-                            shadowColor: AppColors.secondaryAction.withValues(alpha: 0.5),
+                            shadowColor: AppColors.secondaryAction.withValues(
+                              alpha: 0.5,
+                            ),
                           ),
                           child: _isLoading
                               ? const SizedBox(
@@ -184,8 +217,9 @@ class _SubscriptionScreenState extends ConsumerState<SubscriptionScreen> {
                                   ),
                                 )
                               : Text(
-                                  _selectedProductId == AppConstants.subscriptionAnnualId 
-                                      ? 'Secure My Memories' 
+                                  _selectedProductId ==
+                                          AppConstants.subscriptionAnnualId
+                                      ? 'Secure My Memories'
                                       : 'Unlock Memory Vault',
                                   style: AppTypography.headlineMedium.copyWith(
                                     color: Colors.white,
@@ -194,20 +228,19 @@ class _SubscriptionScreenState extends ConsumerState<SubscriptionScreen> {
                                 ),
                         ),
                       ),
-                      
+
                       const SizedBox(height: 24),
-                      
+
                       // Legal Links - Required by App Store
                       Row(
                         mainAxisAlignment: MainAxisAlignment.center,
                         children: [
                           GestureDetector(
                             onTap: _isLoading ? null : _handleRestore,
-                            child: const Text(
+                            child: Text(
                               'Restore Purchases',
-                              style: TextStyle(
+                              style: AppTypography.labelSmall.copyWith(
                                 color: Colors.grey,
-                                fontSize: 10,
                                 decoration: TextDecoration.underline,
                               ),
                             ),
@@ -217,11 +250,10 @@ class _SubscriptionScreenState extends ConsumerState<SubscriptionScreen> {
                             onTap: () {
                               // TODO: Open Terms
                             },
-                            child: const Text(
+                            child: Text(
                               'Terms of Service',
-                              style: TextStyle(
+                              style: AppTypography.labelSmall.copyWith(
                                 color: Colors.grey,
-                                fontSize: 10,
                                 decoration: TextDecoration.underline,
                               ),
                             ),
@@ -231,18 +263,17 @@ class _SubscriptionScreenState extends ConsumerState<SubscriptionScreen> {
                             onTap: () {
                               // TODO: Open Privacy
                             },
-                            child: const Text(
+                            child: Text(
                               'Privacy Policy',
-                              style: TextStyle(
+                              style: AppTypography.labelSmall.copyWith(
                                 color: Colors.grey,
-                                fontSize: 10,
                                 decoration: TextDecoration.underline,
                               ),
                             ),
                           ),
                         ],
                       ),
-                      
+
                       const SizedBox(height: 16),
                     ],
                   ),
@@ -255,7 +286,7 @@ class _SubscriptionScreenState extends ConsumerState<SubscriptionScreen> {
     );
   }
 
-  Widget _buildFeature(IconData icon, String text) {
+  Widget _buildFeature(PhosphorIconData icon, String text) {
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 12),
       child: Row(
@@ -266,12 +297,14 @@ class _SubscriptionScreenState extends ConsumerState<SubscriptionScreen> {
               color: AppColors.primaryAction.withValues(alpha: 0.1),
               borderRadius: BorderRadius.circular(8),
             ),
-            child: Icon(icon, color: AppColors.primaryAction, size: 24),
+            child: AppIcon(icon, color: AppColors.primaryAction, size: 24),
           ),
           const SizedBox(width: 16),
           Text(
             text,
-            style: AppTypography.bodyLarge.copyWith(fontWeight: FontWeight.w500),
+            style: AppTypography.bodyLarge.copyWith(
+              fontWeight: FontWeight.w500,
+            ),
           ),
         ],
       ),
@@ -286,21 +319,21 @@ class _SubscriptionScreenState extends ConsumerState<SubscriptionScreen> {
     bool isPopular = false,
   }) {
     final isSelected = _selectedProductId == id;
-    
+
     return Expanded(
       child: GestureDetector(
         onTap: () => setState(() => _selectedProductId = id),
         child: Container(
           padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 8),
           decoration: BoxDecoration(
-            color: isSelected 
-              ? AppColors.primaryAction.withOpacity(0.1) 
-              : Colors.white.withOpacity(0.05),
+            color: isSelected
+                ? AppColors.primaryAction.withOpacity(0.1)
+                : Colors.white.withOpacity(0.05),
             borderRadius: BorderRadius.circular(16),
             border: Border.all(
-              color: isSelected 
-                ? AppColors.primaryAction 
-                : Colors.white.withOpacity(0.1),
+              color: isSelected
+                  ? AppColors.primaryAction
+                  : Colors.white.withOpacity(0.1),
               width: 2,
             ),
           ),
@@ -308,20 +341,21 @@ class _SubscriptionScreenState extends ConsumerState<SubscriptionScreen> {
             children: [
               if (isPopular)
                 Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 6,
+                    vertical: 2,
+                  ),
                   margin: const EdgeInsets.only(bottom: 4),
                   decoration: BoxDecoration(
                     color: AppColors.primaryAction,
                     borderRadius: BorderRadius.circular(4),
                   ),
-                    child: const Text(
-                      'POPULAR',
-                      style: TextStyle(
-                        color: AppColors.voidNavy, // âœ¨ Consistency
-                        fontSize: 8,
-                        fontWeight: FontWeight.bold,
-                      ),
+                  child: Text(
+                    'POPULAR',
+                    style: AppTypography.labelExtraSmall.copyWith(
+                      color: AppColors.voidNavy, // âœ¨ Consistency
                     ),
+                  ),
                 ),
               Text(
                 title,
@@ -341,9 +375,8 @@ class _SubscriptionScreenState extends ConsumerState<SubscriptionScreen> {
               const SizedBox(height: 2),
               Text(
                 subtitle,
-                style: const TextStyle(
+                style: AppTypography.labelExtraSmall.copyWith(
                   color: Colors.white38,
-                  fontSize: 8,
                 ),
               ),
             ],
