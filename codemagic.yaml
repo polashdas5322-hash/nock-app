@@ -15,6 +15,7 @@ workflows:
           
           # 2. Hard Reset CocoaPods
           cd ios
+          pod deintegrate
           rm -rf Pods build Podfile.lock .symlinks/plugins
           pod install --repo-update
           
