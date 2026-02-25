@@ -62,7 +62,7 @@
 	
 	<!-- FLUTTER: Modern Deep Linking (go_router support) -->
 	<key>FlutterDeepLinkingEnabled</key>
-	<true/>
+	<false/>
 	
 	<!-- PRIVACY: Disable Facebook SDK auto-tracking -->
 	<!-- CRITICAL: Without these, fbapi schemes may trigger ATT requirement -->
