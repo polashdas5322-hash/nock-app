@@ -46,8 +46,8 @@ post_install do |installer|
       # Disable bitcode as it's deprecated and can cause linkage issues
       config.build_settings['ENABLE_BITCODE'] = 'NO'
       
-      # Existing architecture removal
-      config.build_settings['EXCLUDED_ARCHS[sdk=iphonesimulator*]'] = ""
+      # Exclude arm64 for simulator to prevent linking errors
+      config.build_settings['EXCLUDED_ARCHS[sdk=iphonesimulator*]'] = "arm64"
     end
   end
 
