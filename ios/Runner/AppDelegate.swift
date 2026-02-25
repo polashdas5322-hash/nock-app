@@ -96,8 +96,10 @@ import BackgroundTasks
             }
         }
         
-        let backupID = UIApplication.shared.beginBackgroundTask(withName: taskId) {
+        var backupID = UIBackgroundTaskIdentifier.invalid
+        backupID = UIApplication.shared.beginBackgroundTask(withName: taskId) {
             UIApplication.shared.endBackgroundTask(backupID)
+            backupID = .invalid
         }
         result(taskId)
         
