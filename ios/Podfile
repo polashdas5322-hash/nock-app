@@ -26,7 +26,7 @@ end
 require File.expand_path(File.join('packages', 'flutter_tools', 'bin', 'podhelper'), flutter_root)
 
 target 'Runner' do
-  use_frameworks!
+  use_frameworks! :linkage => :static
   use_modular_headers!
 
   flutter_install_all_ios_pods File.dirname(File.realpath(__FILE__))
@@ -48,6 +48,9 @@ post_install do |installer|
       
       # Exclude arm64 for simulator to prevent linking errors
       config.build_settings['EXCLUDED_ARCHS[sdk=iphonesimulator*]'] = "arm64"
+
+      # Enable modules to fix "Module not found" errors
+      config.build_settings['CLANG_ENABLE_MODULES'] = 'YES'
     end
   end
 
