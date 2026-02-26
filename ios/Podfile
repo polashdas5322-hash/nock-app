@@ -58,14 +58,16 @@ post_install do |installer|
     end
   end
 
-  # 2. Patch FFmpeg binary for Simulator (backup to codemagic.yaml patch)
-  # Search multiple possible locations for the ffmpegkit binary
-  ffmpeg_paths = Dir.glob("{Pods,../.symlinks,#{ENV['HOME']}/.pub-cache}/**/ffmpegkit.framework/ffmpegkit")
-  
-  ffmpeg_paths.each do |binary_path|
-    if File.exist?(binary_path)
-      puts "🔧 Nock Build: Patching FFmpeg at #{binary_path}..."
-      system("xcrun vtool -arch arm64 -set-build-version 7 15.1 15.1 -replace \"#{binary_path}\" -output \"#{binary_path}\" 2>/dev/null")
+  # 2. Patch ALL FFmpeg framework binaries for Simulator
+  ffmpeg_base = Dir.glob("#{ENV['HOME']}/.pub-cache/**/ffmpeg_kit_flutter_new-*/ios/Frameworks").first
+  if ffmpeg_base && Dir.exist?(ffmpeg_base)
+    Dir.glob("#{ffmpeg_base}/*.framework").each do |fw_dir|
+      binary_name = File.basename(fw_dir, '.framework')
+      binary_path = "#{fw_dir}/#{binary_name}"
+      if File.exist?(binary_path)
+        puts "🔧 Nock Build: Patching #{binary_name}..."
+        system("xcrun vtool -arch arm64 -set-build-version 7 15.1 15.1 -replace \"#{binary_path}\" -output \"#{binary_path}\" 2>/dev/null")
+      end
     end
   end
 end
