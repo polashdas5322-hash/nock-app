@@ -13,13 +13,23 @@ workflows:
           flutter clean
           flutter pub get
           
-          # 2. Hard Reset CocoaPods
+          # 2. Patch FFmpeg binary for Simulator (fixes "built for iOS" dylib error)
+          FFMPEG_BIN=$(find "$HOME/.pub-cache" -path "*/ffmpeg_kit_flutter_new*/ios/Frameworks/ffmpegkit.framework/ffmpegkit" -type f 2>/dev/null | head -1)
+          if [ -f "$FFMPEG_BIN" ]; then
+            echo "🔧 Patching FFmpeg binary at: $FFMPEG_BIN"
+            xcrun vtool -arch arm64 -set-build-version 7 15.1 15.1 -replace "$FFMPEG_BIN" -output "$FFMPEG_BIN" 2>/dev/null || true
+            echo "✅ FFmpeg patched for simulator"
+          else
+            echo "⚠️ FFmpeg binary not found in pub cache, skipping patch"
+          fi
+          
+          # 3. Hard Reset CocoaPods
           cd ios
           pod deintegrate
           rm -rf Pods build Podfile.lock .symlinks/plugins
           pod install --repo-update
           
-          # 3. Return and Build
+          # 4. Return and Build
           cd ..
           flutter build ios --simulator --debug --no-codesign
     artifacts:

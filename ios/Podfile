@@ -58,19 +58,14 @@ post_install do |installer|
     end
   end
 
-  # 2. Automate the vtool patch for FFmpeg (The "Real World" Fix)
-  ffmpeg_framework_path = "Pods/ffmpeg_kit_flutter_new/ios/Frameworks/ffmpegkit.framework"
+  # 2. Patch FFmpeg binary for Simulator (backup to codemagic.yaml patch)
+  # Search multiple possible locations for the ffmpegkit binary
+  ffmpeg_paths = Dir.glob("{Pods,../.symlinks,#{ENV['HOME']}/.pub-cache}/**/ffmpegkit.framework/ffmpegkit")
   
-  if Dir.exist?(ffmpeg_framework_path)
-    # Define the path to the binary inside the framework
-    binary_path = "#{ffmpeg_framework_path}/ffmpegkit"
-    
-    # Check if the file exists before trying to patch
+  ffmpeg_paths.each do |binary_path|
     if File.exist?(binary_path)
-      puts "🔧 Nock Build: Patching FFmpeg for iOS 26 Simulator..."
-      # Use vtool to re-tag Platform 2 (iOS) to Platform 7 (Simulator)
-      # This fixes "App needs to be updated" error on iOS 26+ Simulators
-      system("xcrun vtool -arch arm64 -set-build-version 7 13.0 13.0 -replace \"#{binary_path}\" -output \"#{binary_path}\" 2>/dev/null")
+      puts "🔧 Nock Build: Patching FFmpeg at #{binary_path}..."
+      system("xcrun vtool -arch arm64 -set-build-version 7 15.1 15.1 -replace \"#{binary_path}\" -output \"#{binary_path}\" 2>/dev/null")
     end
   end
 end
