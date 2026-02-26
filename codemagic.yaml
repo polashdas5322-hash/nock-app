@@ -45,7 +45,12 @@ workflows:
           patch_frameworks "$SYM_FW"
           echo "✅ All FFmpeg frameworks patched"
           
-          # 4. Second pass: rebuild with patched frameworks (Dart is cached, only xcodebuild reruns)
+          # 4. Clean Xcode build cache so pods recompile with patched frameworks
+          echo "🧹 Cleaning Xcode build cache..."
+          rm -rf ios/build
+          rm -rf $HOME/Library/Developer/Xcode/DerivedData/*Runner* 2>/dev/null || true
+          
+          # 5. Second pass: full rebuild with patched frameworks
           echo "🔄 Pass 2: Building with patched frameworks..."
           flutter build ios --simulator --debug --no-codesign
     artifacts:
