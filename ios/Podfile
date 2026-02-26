@@ -49,13 +49,6 @@ post_install do |installer|
       # Enable modules to fix "Module not found" errors
       config.build_settings['CLANG_ENABLE_MODULES'] = 'YES'
     end
-
-    # Only exclude arm64 simulator for FFmpeg (pre-built binary without arm64 sim slice)
-    if target.name == 'ffmpeg_kit_flutter_new' || target.name.start_with?('ffmpeg')
-      target.build_configurations.each do |config|
-        config.build_settings['EXCLUDED_ARCHS[sdk=iphonesimulator*]'] = 'arm64'
-      end
-    end
   end
 
   # 2. Patch ALL FFmpeg framework binaries for Simulator
