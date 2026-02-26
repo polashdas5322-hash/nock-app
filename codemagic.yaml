@@ -13,33 +13,40 @@ workflows:
           flutter clean
           flutter pub get
           
-          # 2. Patch ALL FFmpeg framework binaries for Simulator
-          # FFmpeg ships multiple frameworks (ffmpegkit, libavcodec, libavformat, etc.)
-          # All must be re-tagged from iOS (platform 2) to Simulator (platform 7)
-          FFMPEG_FW_DIR=$(ls -d $HOME/.pub-cache/hosted/pub.dev/ffmpeg_kit_flutter_new-*/ios/Frameworks 2>/dev/null | head -1)
-          if [ -d "$FFMPEG_FW_DIR" ]; then
-            echo "🔧 Found FFmpeg frameworks at: $FFMPEG_FW_DIR"
-            for fw in "$FFMPEG_FW_DIR"/*.framework; do
-              binary_name=$(basename "$fw" .framework)
-              binary="$fw/$binary_name"
-              if [ -f "$binary" ]; then
-                echo "  Patching: $binary_name"
-                xcrun vtool -arch arm64 -set-build-version 7 15.1 15.1 -replace "$binary" -output "$binary" 2>/dev/null || true
-              fi
-            done
-            echo "✅ All FFmpeg frameworks patched for simulator"
-          else
-            echo "⚠️ FFmpeg frameworks directory not found, skipping patch"
-          fi
+          # 2. First pass: let Flutter set up everything (pod install, Dart compilation)
+          # This will FAIL at link time due to unpatched FFmpeg — that's expected.
+          echo "🔄 Pass 1: Setting up build environment..."
+          flutter build ios --simulator --debug --no-codesign 2>&1 || true
           
-          # 3. Hard Reset CocoaPods
-          cd ios
-          pod deintegrate
-          rm -rf Pods build Podfile.lock .symlinks/plugins
-          pod install --repo-update
+          # 3. Patch ALL FFmpeg framework binaries for Simulator
+          # Must happen AFTER Flutter's pod install to avoid being overwritten
+          echo "🔧 Patching FFmpeg frameworks for simulator..."
+          patch_frameworks() {
+            local dir="$1"
+            if [ -d "$dir" ]; then
+              for fw in "$dir"/*.framework; do
+                local binary_name=$(basename "$fw" .framework)
+                local binary="$fw/$binary_name"
+                if [ -f "$binary" ]; then
+                  echo "  Patching: $binary_name"
+                  xcrun vtool -arch arm64 -set-build-version 7 15.1 15.1 -replace "$binary" -output "$binary" 2>/dev/null || true
+                fi
+              done
+            fi
+          }
+          # Patch in pub cache (source of truth)
+          PUB_FW=$(ls -d $HOME/.pub-cache/hosted/pub.dev/ffmpeg_kit_flutter_new-*/ios/Frameworks 2>/dev/null | head -1)
+          patch_frameworks "$PUB_FW"
+          # Patch in Pods directory (what Xcode actually links against)
+          PODS_FW=$(ls -d ios/Pods/ffmpeg_kit_flutter_new/ios/Frameworks 2>/dev/null | head -1)
+          patch_frameworks "$PODS_FW"
+          # Patch via symlinks path
+          SYM_FW=$(ls -d ios/.symlinks/plugins/ffmpeg_kit_flutter_new/ios/Frameworks 2>/dev/null | head -1)
+          patch_frameworks "$SYM_FW"
+          echo "✅ All FFmpeg frameworks patched"
           
-          # 4. Return and Build
-          cd ..
+          # 4. Second pass: rebuild with patched frameworks (Dart is cached, only xcodebuild reruns)
+          echo "🔄 Pass 2: Building with patched frameworks..."
           flutter build ios --simulator --debug --no-codesign
     artifacts:
       - build/ios/iphonesimulator/Runner.app
