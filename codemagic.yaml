@@ -13,14 +13,22 @@ workflows:
           flutter clean
           flutter pub get
           
-          # 2. Patch FFmpeg binary for Simulator (fixes "built for iOS" dylib error)
-          FFMPEG_BIN=$(find "$HOME/.pub-cache" -path "*/ffmpeg_kit_flutter_new*/ios/Frameworks/ffmpegkit.framework/ffmpegkit" -type f 2>/dev/null | head -1)
-          if [ -f "$FFMPEG_BIN" ]; then
-            echo "🔧 Patching FFmpeg binary at: $FFMPEG_BIN"
-            xcrun vtool -arch arm64 -set-build-version 7 15.1 15.1 -replace "$FFMPEG_BIN" -output "$FFMPEG_BIN" 2>/dev/null || true
-            echo "✅ FFmpeg patched for simulator"
+          # 2. Patch ALL FFmpeg framework binaries for Simulator
+          # FFmpeg ships multiple frameworks (ffmpegkit, libavcodec, libavformat, etc.)
+          # All must be re-tagged from iOS (platform 2) to Simulator (platform 7)
+          FFMPEG_FW_DIR=$(find / -maxdepth 10 -type d -name "Frameworks" -path "*/ffmpeg_kit_flutter_new*/ios/*" 2>/dev/null | head -1)
+          if [ -d "$FFMPEG_FW_DIR" ]; then
+            echo "🔧 Found FFmpeg frameworks at: $FFMPEG_FW_DIR"
+            find "$FFMPEG_FW_DIR" -name "*.framework" -type d | while read fw; do
+              binary="$fw/$(basename "${fw}" .framework)"
+              if [ -f "$binary" ]; then
+                echo "  Patching: $(basename "$fw")"
+                xcrun vtool -arch arm64 -set-build-version 7 15.1 15.1 -replace "$binary" -output "$binary" 2>/dev/null || true
+              fi
+            done
+            echo "✅ All FFmpeg frameworks patched for simulator"
           else
-            echo "⚠️ FFmpeg binary not found in pub cache, skipping patch"
+            echo "⚠️ FFmpeg frameworks directory not found, skipping patch"
           fi
           
           # 3. Hard Reset CocoaPods
